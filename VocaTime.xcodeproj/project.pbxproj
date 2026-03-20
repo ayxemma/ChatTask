@@ -16,6 +16,11 @@
 		A10000000000000000000007 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* AppError.swift */; };
 		A10000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Assets.xcassets */; };
 		A10000000000000000000009 /* SpeechRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* SpeechRecognizerService.swift */; };
+		A10000000000000000000010 /* ParsedCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* ParsedCommand.swift */; };
+		A10000000000000000000011 /* ReminderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* ReminderItem.swift */; };
+		A10000000000000000000012 /* CalendarEventItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* CalendarEventItem.swift */; };
+		A10000000000000000000013 /* DateParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* DateParser.swift */; };
+		A10000000000000000000014 /* IntentParserService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* IntentParserService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +33,11 @@
 		A20000000000000000000007 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
 		A20000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000009 /* SpeechRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizerService.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* ParsedCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParsedCommand.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* ReminderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderItem.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* CalendarEventItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarEventItem.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* DateParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateParser.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* IntentParserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentParserService.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* VocaTime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VocaTime.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -56,11 +66,22 @@
 				A20000000000000000000001 /* VocaTimeApp.swift */,
 				A50000000000000000000004 /* Views */,
 				A50000000000000000000005 /* ViewModels */,
+				A50000000000000000000008 /* Models */,
 				A50000000000000000000006 /* Services */,
 				A50000000000000000000007 /* Utilities */,
 				A20000000000000000000008 /* Assets.xcassets */,
 			);
 			path = VocaTime;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000008 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000010 /* ParsedCommand.swift */,
+				A20000000000000000000011 /* ReminderItem.swift */,
+				A20000000000000000000012 /* CalendarEventItem.swift */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 		A50000000000000000000003 /* Products */ = {
@@ -94,6 +115,7 @@
 			children = (
 				A20000000000000000000006 /* PermissionService.swift */,
 				A20000000000000000000009 /* SpeechRecognizerService.swift */,
+				A20000000000000000000014 /* IntentParserService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -102,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000007 /* AppError.swift */,
+				A20000000000000000000013 /* DateParser.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -183,6 +206,11 @@
 				A10000000000000000000006 /* PermissionService.swift in Sources */,
 				A10000000000000000000007 /* AppError.swift in Sources */,
 				A10000000000000000000009 /* SpeechRecognizerService.swift in Sources */,
+				A10000000000000000000010 /* ParsedCommand.swift in Sources */,
+				A10000000000000000000011 /* ReminderItem.swift in Sources */,
+				A10000000000000000000012 /* CalendarEventItem.swift in Sources */,
+				A10000000000000000000013 /* DateParser.swift in Sources */,
+				A10000000000000000000014 /* IntentParserService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

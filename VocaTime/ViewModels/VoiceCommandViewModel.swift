@@ -14,6 +14,7 @@ final class VoiceCommandViewModel {
     var flowState: VoiceFlowState = .idle
     var displayedText: String = ""
     var errorMessage: String?
+    var parsedCommand: ParsedCommand?
 
     private let speechService = SpeechRecognizerService()
 
@@ -50,6 +51,7 @@ final class VoiceCommandViewModel {
         flowState = .idle
         displayedText = ""
         errorMessage = nil
+        parsedCommand = nil
         Task { await speechService.cancelForReset() }
     }
 
@@ -61,6 +63,7 @@ final class VoiceCommandViewModel {
         }
 
         displayedText = ""
+        parsedCommand = nil
 
         let startError = await speechService.startRecognition(
             onPartialResult: { [weak self] text in
@@ -94,7 +97,7 @@ final class VoiceCommandViewModel {
                 flowState = .error
             } else {
                 displayedText = trimmed
-                flowState = .success
+                applyParseResult(for: trimmed)
             }
         case .failure(let error):
             let message = error.localizedDescription
@@ -105,6 +108,20 @@ final class VoiceCommandViewModel {
                 displayedText = trimmed
                 errorMessage = message
             }
+            parsedCommand = nil
+            flowState = .error
+        }
+    }
+
+    private func applyParseResult(for transcript: String) {
+        let parser = IntentParserService(referenceDate: Date())
+        switch parser.parse(transcript) {
+        case .success(let command):
+            parsedCommand = command
+            flowState = .success
+        case .failure(let error):
+            parsedCommand = nil
+            errorMessage = error.localizedDescription
             flowState = .error
         }
     }

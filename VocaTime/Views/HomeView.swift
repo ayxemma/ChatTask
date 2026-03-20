@@ -30,6 +30,10 @@ struct HomeView: View {
 
                 textCard
 
+                if let parsed = viewModel.parsedCommand, viewModel.flowState == .success {
+                    parsedResultCard(parsed)
+                }
+
                 Button(action: { viewModel.primaryActionTapped() }) {
                     Text(primaryButtonTitle)
                         .frame(maxWidth: .infinity)
@@ -80,6 +84,52 @@ struct HomeView: View {
             .font(.subheadline.weight(.medium))
             .foregroundStyle(stateColor)
     }
+
+    private func parsedResultCard(_ parsed: ParsedCommand) -> some View {
+        let when = parsed.reminderDate ?? parsed.startDate
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Understood")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            LabeledContent("Action") {
+                Text(actionLabel(parsed.actionType))
+            }
+            LabeledContent("Title") {
+                Text(parsed.title)
+                    .multilineTextAlignment(.trailing)
+            }
+            if let when {
+                LabeledContent("When") {
+                    Text(Self.dateTimeFormatter.string(from: when))
+                }
+            } else {
+                LabeledContent("When") {
+                    Text("Not detected")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+    }
+
+    private func actionLabel(_ type: ActionType) -> String {
+        switch type {
+        case .reminder: return "Reminder"
+        case .calendarEvent: return "Calendar event"
+        case .unknown: return "Unknown"
+        }
+    }
+
+    private static let dateTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
 
     private var textCard: some View {
         VStack(alignment: .leading, spacing: 8) {
