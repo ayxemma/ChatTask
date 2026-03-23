@@ -27,6 +27,10 @@
 		A1000000000000000000001A /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* CalendarView.swift */; };
 		A1000000000000000000001B /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* RootTabView.swift */; };
 		A1000000000000000000001C /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* TaskDetailView.swift */; };
+		A1000000000000000000001D /* LLMTaskParseResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* LLMTaskParseResponse.swift */; };
+		A1000000000000000000001E /* TaskParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* TaskParsing.swift */; };
+		A1000000000000000000001F /* LLMTaskParserService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001F /* LLMTaskParserService.swift */; };
+		A10000000000000000000020 /* TaskParsingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* TaskParsingCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +54,10 @@
 		A2000000000000000000001A /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		A2000000000000000000001B /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
+		A2000000000000000000001D /* LLMTaskParseResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTaskParseResponse.swift; sourceTree = "<group>"; };
+		A2000000000000000000001E /* TaskParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskParsing.swift; sourceTree = "<group>"; };
+		A2000000000000000000001F /* LLMTaskParserService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMTaskParserService.swift; sourceTree = "<group>"; };
+		A20000000000000000000020 /* TaskParsingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskParsingCoordinator.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* VocaTime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VocaTime.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -90,6 +98,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000010 /* ParsedCommand.swift */,
+				A2000000000000000000001D /* LLMTaskParseResponse.swift */,
 				A20000000000000000000011 /* ReminderItem.swift */,
 				A20000000000000000000012 /* CalendarEventItem.swift */,
 				A20000000000000000000018 /* TaskItem.swift */,
@@ -134,6 +143,9 @@
 				A20000000000000000000006 /* PermissionService.swift */,
 				A20000000000000000000009 /* SpeechRecognizerService.swift */,
 				A20000000000000000000014 /* IntentParserService.swift */,
+				A2000000000000000000001E /* TaskParsing.swift */,
+				A2000000000000000000001F /* LLMTaskParserService.swift */,
+				A20000000000000000000020 /* TaskParsingCoordinator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -235,6 +247,10 @@
 				A1000000000000000000001A /* CalendarView.swift in Sources */,
 				A1000000000000000000001B /* RootTabView.swift in Sources */,
 				A1000000000000000000001C /* TaskDetailView.swift in Sources */,
+				A1000000000000000000001D /* LLMTaskParseResponse.swift in Sources */,
+				A1000000000000000000001E /* TaskParsing.swift in Sources */,
+				A1000000000000000000001F /* LLMTaskParserService.swift in Sources */,
+				A10000000000000000000020 /* TaskParsingCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

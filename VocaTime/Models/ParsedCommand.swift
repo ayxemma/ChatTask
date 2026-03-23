@@ -6,6 +6,12 @@ enum ActionType: String, CaseIterable, Equatable {
     case unknown
 }
 
+enum ParserSource: String, Codable, Equatable {
+    case local
+    case llm
+    case unknown
+}
+
 struct ParsedCommand: Equatable {
     var originalText: String
     var actionType: ActionType
@@ -15,4 +21,6 @@ struct ParsedCommand: Equatable {
     var endDate: Date?
     var reminderDate: Date?
     var confidence: Double?
+    var parserSource: ParserSource
+    var languageCode: String?
 }

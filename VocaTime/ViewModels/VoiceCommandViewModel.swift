@@ -37,6 +37,7 @@ final class VoiceCommandViewModel {
     var parsedCommand: ParsedCommand?
 
     private let speechService = SpeechRecognizerService()
+    private let parsingCoordinator = TaskParsingCoordinator()
     private var persistenceContext: ModelContext?
 
     func attachPersistence(_ context: ModelContext) {
@@ -107,7 +108,7 @@ final class VoiceCommandViewModel {
                 chatFlowState = .error
             } else {
                 chatMessages.append(ChatMessage(role: .user, text: trimmed))
-                applyChatParse(transcript: trimmed)
+                await applyChatParse(transcript: trimmed)
             }
         case .failure(let error):
             chatDraftText = ""
@@ -117,25 +118,33 @@ final class VoiceCommandViewModel {
         }
     }
 
-    private func applyChatParse(transcript: String) {
-        let parser = IntentParserService(referenceDate: Date())
-        switch parser.parse(transcript) {
-        case .success(let command):
-            parsedCommand = command
-            let reply = Self.confirmationMessage(for: command, userTranscript: transcript)
-            chatMessages.append(ChatMessage(role: .assistant, text: reply))
-            if let ctx = persistenceContext {
-                TaskItem.insertFromParsedCommand(command, context: ctx)
-            }
-            chatFlowState = .success
-        case .failure(let error):
-            parsedCommand = nil
-            chatMessages.append(ChatMessage(role: .assistant, text: error.localizedDescription))
-            chatFlowState = .error
+    private func applyChatParse(transcript: String) async {
+        let command = await parsingCoordinator.parse(
+            text: transcript,
+            now: Date(),
+            localeIdentifier: Locale.current.identifier,
+            timeZoneIdentifier: TimeZone.current.identifier
+        )
+        parsedCommand = command
+        let reply = Self.confirmationMessage(for: command, userTranscript: transcript)
+        chatMessages.append(ChatMessage(role: .assistant, text: reply))
+        if let ctx = persistenceContext {
+            TaskItem.insertFromParsedCommand(command, context: ctx)
         }
+        chatFlowState = .success
     }
 
     private static func confirmationMessage(for command: ParsedCommand, userTranscript: String) -> String {
+        if command.actionType == .unknown {
+            let name = command.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = name.isEmpty ? "your task" : "“\(name)”"
+            return """
+            I saved \(label), but I couldn’t confidently figure out a date or time from what you said.
+
+            Open the task from Home or Calendar, tap it, and set the schedule (or leave it as Anytime) in the editor.
+            """
+        }
+
         let low = userTranscript.lowercased()
         if command.actionType == .reminder {
             if let n = extractLeadingMinutes(from: low) {

@@ -12,7 +12,7 @@ struct IntentParserService {
         self.dateParser = DateParser(calendar: calendar, referenceDate: referenceDate)
     }
 
-    func parse(_ originalText: String) -> Result<ParsedCommand, Error> {
+    func parse(_ originalText: String, languageCode: String? = nil) -> Result<ParsedCommand, Error> {
         let trimmed = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return .failure(intentParseError("Nothing to parse."))
@@ -74,7 +74,9 @@ struct IntentParserService {
             startDate: startDate,
             endDate: nil,
             reminderDate: reminderDate,
-            confidence: confidence
+            confidence: confidence,
+            parserSource: .local,
+            languageCode: languageCode
         )
 
         return .success(command)
