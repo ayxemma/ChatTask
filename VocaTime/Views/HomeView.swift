@@ -9,6 +9,10 @@ struct HomeView: View {
     @State private var viewModel = VoiceCommandViewModel()
     @State private var showChat = false
     @State private var showTaskComposer = false
+    @State private var isTodayExpanded = true
+    @State private var isOverdueExpanded = true
+    @State private var isUpcomingExpanded = true
+    @State private var isDoneExpanded = false
 
     private var calendar: Calendar { .current }
 
@@ -134,28 +138,50 @@ struct HomeView: View {
                 .font(.title2.weight(.semibold))
                 .padding(.horizontal)
 
-            taskColumn(title: "Overdue", items: overdueTaskItems)
-            taskColumn(title: "Today", items: todayTaskItems)
-            taskColumn(title: "Upcoming", items: upcomingTaskItems)
-            taskColumn(title: "Done", items: doneTodayItems, doneStyle: true)
+            taskColumn(title: "Today", items: todayTaskItems, isExpanded: $isTodayExpanded)
+            taskColumn(title: "Overdue", items: overdueTaskItems, isExpanded: $isOverdueExpanded)
+            taskColumn(title: "Upcoming", items: upcomingTaskItems, isExpanded: $isUpcomingExpanded)
+            taskColumn(title: "Done", items: doneTodayItems, isExpanded: $isDoneExpanded, doneStyle: true)
         }
     }
 
-    private func taskColumn(title: String, items: [TaskItem], doneStyle: Bool = false) -> some View {
+    private func taskColumn(title: String, items: [TaskItem], isExpanded: Binding<Bool>, doneStyle: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-            if items.isEmpty {
-                Text("Nothing here yet")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(items) { task in
-                    TaskNavigableRow(
-                        task: task,
-                        emphasizeCompleted: doneStyle,
-                        scheduleContext: scheduleContext(for: title)
-                    )
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            }) {
+                HStack {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                if items.isEmpty {
+                    Text("Nothing here yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(items) { task in
+                            TaskNavigableRow(
+                                task: task,
+                                emphasizeCompleted: doneStyle,
+                                scheduleContext: scheduleContext(for: title)
+                            )
+                        }
+                    }
                 }
             }
         }
