@@ -2,13 +2,21 @@ import SwiftData
 import SwiftUI
 
 struct CalendarView: View {
+    @Environment(\.locale) private var locale
+    @Environment(AppSettings.self) private var appSettings
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
     @State private var displayedMonth: Date
     @State private var selectedDate: Date
     @State private var showTaskComposer = false
 
-    private var calendar: Calendar { .current }
+    private var calendar: Calendar {
+        var cal = Calendar.current
+        cal.locale = locale
+        return cal
+    }
+
+    private var strings: AppStrings { appSettings.language.strings }
 
     init() {
         let cal = Calendar.current
@@ -19,6 +27,7 @@ struct CalendarView: View {
     }
 
     var body: some View {
+        let s = strings
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 monthHeader
@@ -41,7 +50,7 @@ struct CalendarView: View {
             .padding()
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Calendar")
+        .navigationTitle(s.calendarTitle)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -50,7 +59,7 @@ struct CalendarView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("New task")
+                .accessibilityLabel(s.newTaskA11y)
             }
         }
         .sheet(isPresented: $showTaskComposer) {
@@ -62,7 +71,8 @@ struct CalendarView: View {
     }
 
     private var monthHeader: some View {
-        HStack {
+        let s = strings
+        return HStack {
             Button {
                 shiftMonth(by: -1)
             } label: {
@@ -71,11 +81,11 @@ struct CalendarView: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
             }
-            .accessibilityLabel("Previous month")
+            .accessibilityLabel(s.previousMonth)
 
             Spacer()
 
-            Text(displayedMonth, format: .dateTime.month(.wide).year())
+            Text(displayedMonth, format: Date.FormatStyle().month(.wide).year().locale(locale))
                 .font(.title2.weight(.semibold))
 
             Spacer()
@@ -88,7 +98,7 @@ struct CalendarView: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
             }
-            .accessibilityLabel("Next month")
+            .accessibilityLabel(s.nextMonth)
         }
     }
 
@@ -160,13 +170,14 @@ struct CalendarView: View {
     }
 
     private var selectedDaySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(selectedDate, format: .dateTime.weekday(.wide).month(.abbreviated).day())
+        let s = strings
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(selectedDate, format: Date.FormatStyle().weekday(.wide).month(.abbreviated).day().locale(locale))
                 .font(.headline)
 
             let items = tasks(on: selectedDate)
             if items.isEmpty {
-                Text("No tasks on this day")
+                Text(s.noTasksThisDay)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
@@ -265,17 +276,19 @@ struct CalendarView: View {
     }
 
     private func accessibilityDayLabel(date: Date, count: Int, isSelected: Bool) -> String {
+        let s = strings
         let formatter = DateFormatter()
+        formatter.locale = locale
         formatter.dateStyle = .full
         formatter.timeStyle = .none
         var parts = [formatter.string(from: date)]
         if count == 1 {
-            parts.append("1 task")
+            parts.append(s.taskCountOne)
         } else if count > 1 {
-            parts.append("\(count) tasks")
+            parts.append(String(format: s.taskCountMany, count))
         }
         if isSelected {
-            parts.append("selected")
+            parts.append(s.selected)
         }
         return parts.joined(separator: ", ")
     }
@@ -299,6 +312,8 @@ struct CalendarView: View {
     let container = try! ModelContainer(for: TaskItem.self, configurations: config)
     NavigationStack {
         CalendarView()
+            .environment(AppSettings())
     }
+    .environment(\.locale, Locale(identifier: "en_US"))
     .modelContainer(container)
 }

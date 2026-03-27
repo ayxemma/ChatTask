@@ -2,10 +2,15 @@ import SwiftUI
 
 struct ChatSheetView: View {
     @Bindable var viewModel: VoiceCommandViewModel
+    @Environment(AppSettings.self) private var appSettings
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     @Environment(\.modelContext) private var modelContext
 
+    private var strings: AppStrings { appSettings.language.strings }
+
     var body: some View {
+        let s = strings
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
@@ -48,6 +53,8 @@ struct ChatSheetView: View {
                     RecordButtonView(
                         isListening: viewModel.chatFlowState == .listening,
                         isEnabled: viewModel.chatFlowState != .processing,
+                        startListeningAccessibilityLabel: s.voiceStartListening,
+                        stopListeningAccessibilityLabel: s.voiceStopListening,
                         action: { viewModel.chatMicrophoneTapped() }
                     )
                     .frame(maxWidth: .infinity)
@@ -55,19 +62,26 @@ struct ChatSheetView: View {
                 .padding()
                 .background(Color(.systemBackground))
             }
-            .navigationTitle("Command")
+            .navigationTitle(s.commandTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button(s.dismissDone) { dismiss() }
                 }
             }
             .onAppear {
                 viewModel.attachPersistence(modelContext)
+                viewModel.appLanguage = appSettings.language
                 if viewModel.chatFlowState == .idle {
                     Task {
                         await viewModel.chatBeginListening()
                     }
+                }
+            }
+            .onChange(of: appSettings.language) { _, newValue in
+                viewModel.appLanguage = newValue
+                Task {
+                    await viewModel.handleAppLanguageChanged()
                 }
             }
         }
@@ -85,22 +99,17 @@ struct ChatSheetView: View {
                     .padding(.vertical, 10)
                     .background(isUser ? Color.accentColor : Color(.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-                Text(Self.timeFormatter.string(from: message.timestamp))
+                Text(message.timestamp.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(locale)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
             if !isUser { Spacer(minLength: 48) }
         }
     }
-
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.timeStyle = .short
-        f.dateStyle = .none
-        return f
-    }()
 }
 
 #Preview {
     ChatSheetView(viewModel: VoiceCommandViewModel())
+        .environment(AppSettings())
+        .environment(\.locale, Locale(identifier: "en_US"))
 }

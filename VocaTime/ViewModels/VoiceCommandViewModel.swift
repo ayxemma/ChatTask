@@ -35,6 +35,8 @@ final class VoiceCommandViewModel {
     var chatFlowState: VoiceFlowState = .idle
     var chatDraftText: String = ""
     var parsedCommand: ParsedCommand?
+    /// Synced from `AppSettings.language` by the owning view.
+    var appLanguage: AppLanguage = .defaultForDevice()
 
     private let speechService = SpeechRecognizerService()
     private let parsingCoordinator = TaskParsingCoordinator(
@@ -49,12 +51,23 @@ final class VoiceCommandViewModel {
     }
 
     var chatStatusDescription: String {
+        let s = appLanguage.strings
         switch chatFlowState {
-        case .idle: return "Tap the microphone to speak."
-        case .listening: return "Listening… tap again when you’re done."
-        case .processing: return "Processing…"
-        case .success: return "Ready for your next command."
-        case .error: return "Something went wrong — try again."
+        case .idle: return s.voiceTapToSpeak
+        case .listening: return s.voiceListening
+        case .processing: return s.voiceProcessing
+        case .success: return s.voiceReady
+        case .error: return s.voiceError
+        }
+    }
+
+    /// Call when app language changes while this view model may be active (e.g. chat sheet open).
+    func handleAppLanguageChanged() async {
+        await speechService.cancelForReset()
+        cancelSilenceTimer()
+        if chatFlowState == .listening {
+            chatFlowState = .idle
+            chatDraftText = ""
         }
     }
 
@@ -90,7 +103,8 @@ final class VoiceCommandViewModel {
     func chatBeginListening() async {
         cancelSilenceTimer()
 
-        if let err = await speechService.requestAuthorizationIfNeeded() {
+        let msgs = appLanguage.speechMessages
+        if let err = await speechService.requestAuthorizationIfNeeded(messages: msgs) {
             chatMessages.append(ChatMessage(role: .assistant, text: err))
             chatFlowState = .error
             return
@@ -99,6 +113,8 @@ final class VoiceCommandViewModel {
         chatDraftText = ""
 
         let startError = await speechService.startRecognition(
+            locale: appLanguage.speechLocale,
+            messages: msgs,
             onPartialResult: { [weak self] text in
                 self?.chatDraftText = text
                 self?.resetSilenceTimer()
@@ -126,13 +142,15 @@ final class VoiceCommandViewModel {
         silenceTimerTask = nil
         chatFlowState = .processing
         let outcome = await speechService.stopRecognition()
+        let strings = appLanguage.strings
+        let speechMsgs = appLanguage.speechMessages
         switch outcome {
         case .success(let text):
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             chatDraftText = ""
             if trimmed.isEmpty {
                 chatMessages.append(
-                    ChatMessage(role: .assistant, text: "I didn’t catch that. Try speaking a bit longer.")
+                    ChatMessage(role: .assistant, text: strings.chatEmptyTranscript)
                 )
                 chatFlowState = .error
             } else {
@@ -141,21 +159,36 @@ final class VoiceCommandViewModel {
             }
         case .failure(let error):
             chatDraftText = ""
-            chatMessages.append(ChatMessage(role: .assistant, text: error.localizedDescription))
+            chatMessages.append(
+                ChatMessage(role: .assistant, text: localizedStopFailure(error, speechMsgs: speechMsgs))
+            )
             parsedCommand = nil
             chatFlowState = .error
         }
+    }
+
+    private func localizedStopFailure(_ error: Error, speechMsgs: SpeechServiceMessages) -> String {
+        let ns = error as NSError
+        if ns.domain == VocaTimeSpeechDomain.name, let code = VocaTimeSpeechErrorCode(rawValue: ns.code) {
+            switch code {
+            case .nothingToStop: return speechMsgs.nothingToStop
+            case .interrupted: return speechMsgs.interrupted
+            case .recognitionStopped: return speechMsgs.recognitionStopped
+            case .generic: break
+            }
+        }
+        return ns.localizedDescription
     }
 
     private func applyChatParse(transcript: String) async {
         let command = await parsingCoordinator.parse(
             text: transcript,
             now: Date(),
-            localeIdentifier: Locale.current.identifier,
+            localeIdentifier: appLanguage.uiLocaleIdentifier,
             timeZoneIdentifier: TimeZone.current.identifier
         )
         parsedCommand = command
-        let reply = Self.confirmationMessage(for: command, userTranscript: transcript)
+        let reply = confirmationMessage(for: command, userTranscript: transcript)
         chatMessages.append(ChatMessage(role: .assistant, text: reply))
         if let ctx = persistenceContext {
             TaskItem.insertFromParsedCommand(command, context: ctx)
@@ -163,67 +196,77 @@ final class VoiceCommandViewModel {
         chatFlowState = .success
     }
 
-    private static func confirmationMessage(for command: ParsedCommand, userTranscript: String) -> String {
+    private func confirmationMessage(for command: ParsedCommand, userTranscript: String) -> String {
+        let s = appLanguage.strings
         if command.actionType == .unknown {
             let name = command.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let label = name.isEmpty ? "your task" : "“\(name)”"
-            return """
-            I saved \(label), but I couldn’t confidently figure out a date or time from what you said.
-
-            Open the task from Home or Calendar, tap it, and set the schedule (or leave it as Anytime) in the editor.
-            """
+            let label: String
+            if name.isEmpty {
+                label = s.chatYourTask
+            } else if appLanguage == .english {
+                label = "“\(name)”"
+            } else {
+                label = "「\(name)」"
+            }
+            return String(format: s.chatUnknownSchedule, label)
         }
 
         let low = userTranscript.lowercased()
         if command.actionType == .reminder {
-            if let n = extractLeadingMinutes(from: low) {
-                return "Got it. I’ll remind you in \(n) minute\(n == 1 ? "" : "s")."
+            if let n = extractLeadingMinutes(from: low, language: appLanguage) {
+                return n == 1
+                    ? String(format: s.chatReminderMinutes, n)
+                    : String(format: s.chatReminderMinutesPlural, n)
             }
-            if let n = extractLeadingHours(from: low) {
-                return "Got it. I’ll remind you in \(n) hour\(n == 1 ? "" : "s")."
+            if let n = extractLeadingHours(from: low, language: appLanguage) {
+                return n == 1
+                    ? String(format: s.chatReminderHours, n)
+                    : String(format: s.chatReminderHoursPlural, n)
             }
             if let when = command.reminderDate {
-                let t = chatReplyFormatter.string(from: when)
-                return "Got it. I’ll remind you at \(t) about “\(command.title)”."
+                let t = replyDateFormatter.string(from: when)
+                return String(format: s.chatReminderAt, t, command.title)
             }
-            return "Got it. I’ll remind you about “\(command.title)”."
+            return String(format: s.chatReminderAbout, command.title)
         }
         if command.actionType == .calendarEvent {
             if let when = command.startDate {
-                let t = chatReplyFormatter.string(from: when)
-                return "Got it. I’ve noted “\(command.title)” for \(t)."
+                let t = replyDateFormatter.string(from: when)
+                return String(format: s.chatEventAt, command.title, t)
             }
-            return "Got it. I’ve noted “\(command.title)” for your calendar."
+            return String(format: s.chatEventCalendar, command.title)
         }
-        return "I’m not sure how to schedule that yet. Try “remind me…” or “today at 3 PM…”."
+        return s.chatTryRemind
     }
 
-    private static func extractLeadingMinutes(from low: String) -> Int? {
-        let ns = low as NSString
-        guard let regex = try? NSRegularExpression(pattern: #"in\s+(\d+)\s+minutes?"#, options: .caseInsensitive),
-              let m = regex.firstMatch(in: low, options: [], range: NSRange(location: 0, length: ns.length)),
-              m.numberOfRanges >= 2,
-              let r = Range(m.range(at: 1), in: low),
-              let n = Int(low[r]), n > 0
-        else { return nil }
-        return n
-    }
-
-    private static func extractLeadingHours(from low: String) -> Int? {
-        let ns = low as NSString
-        guard let regex = try? NSRegularExpression(pattern: #"in\s+(\d+)\s+hours?"#, options: .caseInsensitive),
-              let m = regex.firstMatch(in: low, options: [], range: NSRange(location: 0, length: ns.length)),
-              m.numberOfRanges >= 2,
-              let r = Range(m.range(at: 1), in: low),
-              let n = Int(low[r]), n > 0
-        else { return nil }
-        return n
-    }
-
-    private static let chatReplyFormatter: DateFormatter = {
+    private var replyDateFormatter: DateFormatter {
         let f = DateFormatter()
+        f.locale = appLanguage.uiLocale
         f.dateStyle = .medium
         f.timeStyle = .short
         return f
-    }()
+    }
+
+    private func extractLeadingMinutes(from low: String, language: AppLanguage) -> Int? {
+        if let n = matchNumber(prefixPattern: #"in\s+(\d+)\s+minutes?"#, in: low) { return n }
+        if language == .chineseSimplified, let n = matchNumber(prefixPattern: #"(\d+)\s*分钟后"#, in: low) { return n }
+        return nil
+    }
+
+    private func extractLeadingHours(from low: String, language: AppLanguage) -> Int? {
+        if let n = matchNumber(prefixPattern: #"in\s+(\d+)\s+hours?"#, in: low) { return n }
+        if language == .chineseSimplified, let n = matchNumber(prefixPattern: #"(\d+)\s*小时后"#, in: low) { return n }
+        return nil
+    }
+
+    private func matchNumber(prefixPattern: String, in low: String) -> Int? {
+        let ns = low as NSString
+        guard let regex = try? NSRegularExpression(pattern: "^\(prefixPattern)", options: .caseInsensitive),
+              let m = regex.firstMatch(in: low, options: [], range: NSRange(location: 0, length: ns.length)),
+              m.numberOfRanges >= 2,
+              let r = Range(m.range(at: 1), in: low),
+              let n = Int(low[r]), n > 0
+        else { return nil }
+        return n
+    }
 }

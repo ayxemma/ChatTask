@@ -4,6 +4,8 @@ import SwiftUI
 struct TaskComposerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
+    @Environment(AppSettings.self) private var appSettings
 
     @State private var title = ""
     @State private var notes = ""
@@ -18,6 +20,8 @@ struct TaskComposerView: View {
 
     private var calendar: Calendar { .current }
 
+    private var strings: AppStrings { appSettings.language.strings }
+
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -27,20 +31,21 @@ struct TaskComposerView: View {
     }
 
     var body: some View {
+        let s = strings
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                TextField("Title", text: $title, axis: .vertical)
+                TextField(s.titlePlaceholder, text: $title, axis: .vertical)
                     .font(.title3.weight(.semibold))
                     .focused($titleFocused)
 
-                TextField("Notes", text: $notes, axis: .vertical)
+                TextField(s.notesPlaceholder, text: $notes, axis: .vertical)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .lineLimit(3...10)
 
                 VStack(alignment: .leading, spacing: 0) {
                     composeRow(
-                        label: "Date",
+                        label: s.date,
                         value: dateSummary,
                         expanded: showDatePicker,
                         action: {
@@ -62,9 +67,10 @@ struct TaskComposerView: View {
                         )
                         .datePickerStyle(.graphical)
                         .labelsHidden()
+                        .environment(\.locale, locale)
                         .padding(.vertical, 8)
 
-                        Button("Remove date") {
+                        Button(s.removeDate) {
                             hasDate = false
                             hasSpecificTime = false
                             showDatePicker = false
@@ -79,7 +85,7 @@ struct TaskComposerView: View {
                             .padding(.vertical, 4)
 
                         composeRow(
-                            label: "Time",
+                            label: s.time,
                             value: timeSummary,
                             expanded: showTimePicker,
                             action: {
@@ -90,7 +96,7 @@ struct TaskComposerView: View {
                         )
 
                         if showTimePicker {
-                            Toggle("Specific time", isOn: $hasSpecificTime)
+                            Toggle(s.specificTime, isOn: $hasSpecificTime)
                                 .padding(.vertical, 6)
 
                             if hasSpecificTime {
@@ -100,6 +106,7 @@ struct TaskComposerView: View {
                                     displayedComponents: .hourAndMinute
                                 )
                                 .labelsHidden()
+                                .environment(\.locale, locale)
                                 .padding(.vertical, 4)
                             }
                         }
@@ -112,16 +119,16 @@ struct TaskComposerView: View {
             .padding()
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("New Task")
+        .navigationTitle(s.newTask)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") {
+                Button(s.cancel) {
                     dismiss()
                 }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Add") {
+                Button(s.add) {
                     save()
                 }
                 .fontWeight(.semibold)
@@ -134,16 +141,18 @@ struct TaskComposerView: View {
     }
 
     private var dateSummary: String {
-        guard hasDate else { return "None" }
-        if calendar.isDateInToday(daySelection) { return "Today" }
-        if calendar.isDateInTomorrow(daySelection) { return "Tomorrow" }
-        return Self.mediumDateFormatter.string(from: daySelection)
+        let s = strings
+        guard hasDate else { return s.none }
+        if calendar.isDateInToday(daySelection) { return s.todaySummary }
+        if calendar.isDateInTomorrow(daySelection) { return s.tomorrowSummary }
+        return daySelection.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(locale))
     }
 
     private var timeSummary: String {
+        let s = strings
         guard hasDate else { return "—" }
-        if !hasSpecificTime { return "Anytime" }
-        return Self.timeOnlyFormatter.string(from: timeSelection)
+        if !hasSpecificTime { return s.anytime }
+        return timeSelection.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(locale))
     }
 
     private func composeRow(
@@ -196,25 +205,13 @@ struct TaskComposerView: View {
         try? modelContext.save()
         dismiss()
     }
-
-    private static let mediumDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-
-    private static let timeOnlyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
 }
 
 #Preview {
     NavigationStack {
         TaskComposerView()
+            .environment(AppSettings())
+            .environment(\.locale, Locale(identifier: "en_US"))
     }
     .modelContainer(for: TaskItem.self, inMemory: true)
 }

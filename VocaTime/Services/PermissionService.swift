@@ -83,17 +83,18 @@ final class PermissionService {
         }
     }
 
-    func request(_ kind: PermissionKind) async {
+    func request(_ kind: PermissionKind, language: AppLanguage) async {
         lastErrorMessage = nil
+        let s = language.strings
         switch kind {
         case .microphone:
-            await requestMicrophone()
+            await requestMicrophone(messageDenied: s.permissionMicDeniedAfterRequest)
         case .speech:
-            await requestSpeech()
+            await requestSpeech(messageDenied: s.permissionSpeechDeniedAfterRequest)
         case .notifications:
-            await requestNotifications()
+            await requestNotifications(strings: s)
         case .calendar:
-            await requestCalendar()
+            await requestCalendar(strings: s)
         }
     }
 
@@ -104,7 +105,7 @@ final class PermissionService {
         microphoneStatus = mapAVAudio(status)
     }
 
-    private func requestMicrophone() async {
+    private func requestMicrophone(messageDenied: String) async {
         let current = AVCaptureDevice.authorizationStatus(for: .audio)
         if current == .notDetermined {
             let granted = await withCheckedContinuation { continuation in
@@ -112,7 +113,7 @@ final class PermissionService {
             }
             microphoneStatus = granted ? .granted : .denied
             if !granted {
-                lastErrorMessage = "Microphone access was denied. You can enable it in Settings."
+                lastErrorMessage = messageDenied
             }
         } else {
             await refreshMicrophone()
@@ -136,7 +137,7 @@ final class PermissionService {
         speechStatus = mapSpeech(status)
     }
 
-    private func requestSpeech() async {
+    private func requestSpeech(messageDenied: String) async {
         await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { _ in
                 continuation.resume()
@@ -144,7 +145,7 @@ final class PermissionService {
         }
         await refreshSpeech()
         if speechStatus == .denied {
-            lastErrorMessage = "Speech recognition was denied. You can enable it in Settings."
+            lastErrorMessage = messageDenied
         }
     }
 
@@ -165,15 +166,15 @@ final class PermissionService {
         notificationStatus = mapNotification(settings.authorizationStatus)
     }
 
-    private func requestNotifications() async {
+    private func requestNotifications(strings: AppStrings) async {
         do {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
             await refreshNotifications()
             if !granted {
-                lastErrorMessage = "Notifications were not allowed. You can enable them in Settings."
+                lastErrorMessage = strings.permissionNotificationsDenied
             }
         } catch {
-            lastErrorMessage = "Could not request notifications: \(error.localizedDescription)"
+            lastErrorMessage = "\(strings.permissionNotificationsErrorPrefix) \(error.localizedDescription)"
             await refreshNotifications()
         }
     }
@@ -196,15 +197,15 @@ final class PermissionService {
         calendarStatus = mapEKStatus(status)
     }
 
-    private func requestCalendar() async {
+    private func requestCalendar(strings: AppStrings) async {
         do {
             let granted = try await eventStore.requestFullAccessToEvents()
             await refreshCalendar()
             if !granted {
-                lastErrorMessage = "Calendar access was denied. You can enable it in Settings."
+                lastErrorMessage = strings.permissionCalendarDenied
             }
         } catch {
-            lastErrorMessage = "Calendar error: \(error.localizedDescription)"
+            lastErrorMessage = "\(strings.permissionCalendarErrorPrefix) \(error.localizedDescription)"
             await refreshCalendar()
         }
     }

@@ -5,6 +5,8 @@ struct TaskDetailView: View {
     @Bindable var task: TaskItem
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
+    @Environment(AppSettings.self) private var appSettings
 
     @FocusState private var titleFocused: Bool
 
@@ -14,6 +16,8 @@ struct TaskDetailView: View {
     @State private var timeSelection: Date
 
     private var calendar: Calendar { .current }
+
+    private var strings: AppStrings { appSettings.language.strings }
 
     init(task: TaskItem) {
         self.task = task
@@ -32,17 +36,18 @@ struct TaskDetailView: View {
     }
 
     var body: some View {
+        let s = strings
         Form {
-            Section("Task") {
-                TextField("Title", text: titleBinding)
+            Section(s.taskSection) {
+                TextField(s.titlePlaceholder, text: titleBinding)
                     .focused($titleFocused)
 
-                TextField("Notes", text: notesBinding, axis: .vertical)
+                TextField(s.notesPlaceholder, text: notesBinding, axis: .vertical)
                     .lineLimit(3...8)
             }
 
-            Section("Schedule") {
-                Toggle("Scheduled", isOn: $scheduleEnabled)
+            Section(s.scheduleSection) {
+                Toggle(s.scheduledToggle, isOn: $scheduleEnabled)
                     .onChange(of: scheduleEnabled) { _, new in
                         if new {
                             if task.scheduledDate == nil {
@@ -55,31 +60,33 @@ struct TaskDetailView: View {
                     }
 
                 if scheduleEnabled {
-                    DatePicker("Date", selection: $daySelection, displayedComponents: .date)
+                    DatePicker(s.datePickerLabel, selection: $daySelection, displayedComponents: .date)
+                        .environment(\.locale, locale)
                         .onChange(of: daySelection) { _, _ in
                             flushScheduleToTask()
                         }
 
-                    Toggle("Specific time", isOn: $specificTimeEnabled)
+                    Toggle(s.specificTime, isOn: $specificTimeEnabled)
                         .onChange(of: specificTimeEnabled) { _, _ in
                             flushScheduleToTask()
                         }
 
                     if specificTimeEnabled {
-                        DatePicker("Time", selection: $timeSelection, displayedComponents: .hourAndMinute)
+                        DatePicker(s.timePickerLabel, selection: $timeSelection, displayedComponents: .hourAndMinute)
+                            .environment(\.locale, locale)
                             .onChange(of: timeSelection) { _, _ in
                                 flushScheduleToTask()
                             }
                     }
                 }
 
-                Text("Leave “Specific time” off to treat the task as Anytime on that day.")
+                Text(s.scheduleHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Toggle("Completed", isOn: completionBinding)
+                Toggle(s.completed, isOn: completionBinding)
             }
 
             Section {
@@ -88,11 +95,11 @@ struct TaskDetailView: View {
                     try? modelContext.save()
                     dismiss()
                 } label: {
-                    Text("Delete Task")
+                    Text(s.deleteTask)
                 }
             }
         }
-        .navigationTitle("Task")
+        .navigationTitle(s.taskSection)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             titleFocused = true
@@ -114,7 +121,7 @@ struct TaskDetailView: View {
             get: { task.notes ?? "" },
             set: { new in
                 let trimmed = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                task.notes = trimmed.isEmpty ? nil : new
+                task.notes = trimmed.isEmpty ? nil : trimmed
                 task.updatedAt = Date()
             }
         )
@@ -164,6 +171,8 @@ private struct TaskDetailPreviewHost: View {
     var body: some View {
         NavigationStack {
             TaskDetailView(task: task)
+                .environment(AppSettings())
+                .environment(\.locale, Locale(identifier: "en_US"))
         }
         .modelContainer(container)
     }

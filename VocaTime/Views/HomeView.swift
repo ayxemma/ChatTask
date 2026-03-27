@@ -1,9 +1,35 @@
 import SwiftData
 import SwiftUI
 
+private enum DashboardColumn {
+    case today
+    case overdue
+    case upcoming
+    case done
+
+    func title(_ strings: AppStrings) -> String {
+        switch self {
+        case .today: return strings.today
+        case .overdue: return strings.overdue
+        case .upcoming: return strings.upcoming
+        case .done: return strings.doneColumn
+        }
+    }
+
+    var scheduleContext: TaskRowScheduleContext {
+        switch self {
+        case .today: return .today
+        case .overdue: return .overdue
+        case .upcoming: return .upcoming
+        case .done: return .done
+        }
+    }
+}
+
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PermissionService.self) private var permissionService
+    @Environment(AppSettings.self) private var appSettings
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
     @State private var viewModel = VoiceCommandViewModel()
@@ -15,6 +41,8 @@ struct HomeView: View {
     @State private var isDoneExpanded = false
 
     private var calendar: Calendar { .current }
+
+    private var strings: AppStrings { appSettings.language.strings }
 
     private var overdueTaskItems: [TaskItem] {
         let now = Date()
@@ -63,13 +91,14 @@ struct HomeView: View {
     }
 
     var body: some View {
+        let s = strings
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(spacing: 24) {
                     VStack(spacing: 8) {
                         Text("VocaTime")
                             .font(.largeTitle.weight(.semibold))
-                        Text("Speak → Understand → Schedule → Remind")
+                        Text(s.tagline)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -83,7 +112,7 @@ struct HomeView: View {
                     NavigationLink {
                         PermissionsView()
                     } label: {
-                        Label("Permission status", systemImage: "lock.shield")
+                        Label(s.permissionStatus, systemImage: "lock.shield")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -103,7 +132,7 @@ struct HomeView: View {
                     .clipShape(Circle())
                     .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
             }
-            .accessibilityLabel("Open command chat")
+            .accessibilityLabel(s.openCommandChat)
             .padding(.trailing, 20)
             .padding(.bottom, 28)
         }
@@ -118,13 +147,37 @@ struct HomeView: View {
             .presentationDragIndicator(.visible)
         }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { appSettings.language },
+                        set: { appSettings.language = $0 }
+                    )
+                ) {
+                    Text("EN").tag(AppLanguage.english)
+                    Text("中文").tag(AppLanguage.chineseSimplified)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 140)
+                .accessibilityLabel("Language")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showTaskComposer = true
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("New task")
+                .accessibilityLabel(s.newTaskA11y)
+            }
+        }
+        .onAppear {
+            viewModel.appLanguage = appSettings.language
+        }
+        .onChange(of: appSettings.language) { _, newValue in
+            viewModel.appLanguage = newValue
+            Task {
+                await viewModel.handleAppLanguageChanged()
             }
         }
         .task {
@@ -133,20 +186,23 @@ struct HomeView: View {
     }
 
     private var dashboardSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Tasks")
+        let s = strings
+        return VStack(alignment: .leading, spacing: 20) {
+            Text(s.tasks)
                 .font(.title2.weight(.semibold))
                 .padding(.horizontal)
 
-            taskColumn(title: "Today", items: todayTaskItems, isExpanded: $isTodayExpanded)
-            taskColumn(title: "Overdue", items: overdueTaskItems, isExpanded: $isOverdueExpanded)
-            taskColumn(title: "Upcoming", items: upcomingTaskItems, isExpanded: $isUpcomingExpanded)
-            taskColumn(title: "Done", items: doneTodayItems, isExpanded: $isDoneExpanded, doneStyle: true)
+            taskColumn(column: .today, items: todayTaskItems, isExpanded: $isTodayExpanded)
+            taskColumn(column: .overdue, items: overdueTaskItems, isExpanded: $isOverdueExpanded)
+            taskColumn(column: .upcoming, items: upcomingTaskItems, isExpanded: $isUpcomingExpanded)
+            taskColumn(column: .done, items: doneTodayItems, isExpanded: $isDoneExpanded, doneStyle: true)
         }
     }
 
-    private func taskColumn(title: String, items: [TaskItem], isExpanded: Binding<Bool>, doneStyle: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func taskColumn(column: DashboardColumn, items: [TaskItem], isExpanded: Binding<Bool>, doneStyle: Bool = false) -> some View {
+        let s = strings
+        let title = column.title(s)
+        return VStack(alignment: .leading, spacing: 8) {
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isExpanded.wrappedValue.toggle()
@@ -168,7 +224,7 @@ struct HomeView: View {
 
             if isExpanded.wrappedValue {
                 if items.isEmpty {
-                    Text("Nothing here yet")
+                    Text(s.nothingHereYet)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.top, 4)
@@ -178,7 +234,7 @@ struct HomeView: View {
                             TaskNavigableRow(
                                 task: task,
                                 emphasizeCompleted: doneStyle,
-                                scheduleContext: scheduleContext(for: title)
+                                scheduleContext: column.scheduleContext
                             )
                         }
                     }
@@ -190,16 +246,6 @@ struct HomeView: View {
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
-    }
-
-    private func scheduleContext(for columnTitle: String) -> TaskRowScheduleContext {
-        switch columnTitle {
-        case "Overdue": return .overdue
-        case "Today": return .today
-        case "Upcoming": return .upcoming
-        case "Done": return .done
-        default: return .today
-        }
     }
 
     /// Timed tasks first (by time ascending); unscheduled / date-only clock ("Anytime") last, newest first among those.
@@ -225,14 +271,15 @@ struct HomeView: View {
 
     @ViewBuilder
     private var statusStrip: some View {
+        let s = strings
         let denied = PermissionKind.allCases.filter {
             permissionService.status(for: $0) == .denied
         }
         if !denied.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Some permissions are denied: \(denied.map(\.title).joined(separator: ", "))")
+                Text("\(s.permissionsDeniedPrefix) \(denied.map { $0.localizedTitle(strings: s) }.joined(separator: ", "))")
                     .font(.footnote)
-                Text("Open Permission status to request access or fix in Settings.")
+                Text(s.openPermissionHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -251,6 +298,7 @@ struct HomeView: View {
     NavigationStack {
         HomeView()
             .environment(PermissionService())
+            .environment(AppSettings())
     }
     .modelContainer(container)
 }

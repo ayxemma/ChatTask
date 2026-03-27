@@ -3,18 +3,22 @@ import UIKit
 
 struct PermissionsView: View {
     @Environment(PermissionService.self) private var permissionService
+    @Environment(AppSettings.self) private var appSettings
     @Environment(\.openURL) private var openURL
 
+    private var strings: AppStrings { appSettings.language.strings }
+
     var body: some View {
+        let s = strings
         List {
             Section {
-                Text("VocaTime needs these permissions to hear you, understand speech, remind you, and add calendar events. Denied items can be changed in Settings.")
+                Text(s.permissionsIntro)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
             }
 
-            Section("Status") {
+            Section(s.permissionsStatusHeader) {
                 ForEach(PermissionKind.allCases) { kind in
                     PermissionRowView(kind: kind)
                 }
@@ -26,18 +30,18 @@ struct PermissionsView: View {
                         .foregroundStyle(.red)
                         .font(.subheadline)
                 } header: {
-                    Text("Last message")
+                    Text(s.lastMessageHeader)
                 }
             }
         }
-        .navigationTitle("Permissions")
+        .navigationTitle(s.permissionsNavigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await permissionService.refreshAll()
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Settings") {
+                Button(s.settings) {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         openURL(url)
                     }
@@ -49,24 +53,28 @@ struct PermissionsView: View {
 
 private struct PermissionRowView: View {
     @Environment(PermissionService.self) private var permissionService
+    @Environment(AppSettings.self) private var appSettings
     let kind: PermissionKind
 
+    private var strings: AppStrings { appSettings.language.strings }
+
     var body: some View {
+        let s = strings
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(kind.title)
+                Text(kind.localizedTitle(strings: s))
                     .font(.headline)
                 Spacer()
-                Text(permissionService.status(for: kind).label)
+                Text(permissionService.status(for: kind).label(strings: s))
                     .font(.subheadline)
                     .foregroundStyle(statusColor)
             }
-            Text(kind.usageExplanation)
+            Text(kind.localizedExplanation(strings: s))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button("Request access") {
+            Button(s.requestAccess) {
                 Task {
-                    await permissionService.request(kind)
+                    await permissionService.request(kind, language: appSettings.language)
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -93,5 +101,6 @@ private struct PermissionRowView: View {
     NavigationStack {
         PermissionsView()
             .environment(PermissionService())
+            .environment(AppSettings())
     }
 }

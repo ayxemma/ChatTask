@@ -2,20 +2,33 @@ import AVFoundation
 import Foundation
 import Speech
 
-private func speechRecognitionError(_ message: String) -> Error {
-    NSError(domain: "VocaTimeSpeech", code: 0, userInfo: [NSLocalizedDescriptionKey: message])
+enum VocaTimeSpeechErrorCode: Int {
+    case generic = 0
+    case nothingToStop = 1
+    case interrupted = 2
+    case recognitionStopped = 3
+}
+
+enum VocaTimeSpeechDomain {
+    static let name = "VocaTimeSpeech"
+}
+
+private func speechRecognitionError(code: VocaTimeSpeechErrorCode, fallbackMessage: String) -> Error {
+    NSError(domain: VocaTimeSpeechDomain.name, code: code.rawValue, userInfo: [NSLocalizedDescriptionKey: fallbackMessage])
 }
 
 /// Streams microphone audio to on-device/server speech recognition. All public methods and callbacks are main-actor isolated.
 @MainActor
 final class SpeechRecognizerService {
-    private let speechRecognizer = SFSpeechRecognizer(locale: Locale.current)
+    /// Strong reference for the active session only; created per `startRecognition(locale:)`.
+    private var sessionRecognizer: SFSpeechRecognizer?
     private var audioEngine: AVAudioEngine?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
 
     private var onPartialResult: ((String) -> Void)?
     private var onRuntimeError: ((String) -> Void)?
+    private var sessionMessages: SpeechServiceMessages?
 
     private var lastTranscript: String = ""
     private var isStopping = false
@@ -28,7 +41,7 @@ final class SpeechRecognizerService {
     }
 
     /// Returns `nil` if authorized (or became authorized), otherwise a user-readable error.
-    func requestAuthorizationIfNeeded() async -> String? {
+    func requestAuthorizationIfNeeded(messages: SpeechServiceMessages) async -> String? {
         let speechStatus = SFSpeechRecognizer.authorizationStatus()
         switch speechStatus {
         case .authorized:
@@ -38,12 +51,12 @@ final class SpeechRecognizerService {
                 SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
             }
             if newStatus != .authorized {
-                return speechAuthErrorMessage(for: newStatus)
+                return speechAuthErrorMessage(for: newStatus, messages: messages)
             }
         case .denied, .restricted:
-            return speechAuthErrorMessage(for: speechStatus)
+            return speechAuthErrorMessage(for: speechStatus, messages: messages)
         @unknown default:
-            return "Speech recognition is not available."
+            return messages.speechNotAvailable
         }
 
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
@@ -57,26 +70,35 @@ final class SpeechRecognizerService {
             if granted {
                 return nil
             }
-            return "Microphone access was denied. Enable it in Settings → Privacy → Microphone."
+            return messages.micDeniedSettings
         case .denied, .restricted:
-            return "Microphone access is denied. Enable it in Settings → Privacy → Microphone."
+            return messages.micDenied
         @unknown default:
-            return "Microphone is not available."
+            return messages.micUnavailable
         }
     }
 
-    /// Starts capturing audio and recognition. Returns an immediate error string if setup fails; otherwise `nil`.
+    /// Starts capturing audio and recognition for the given locale. Returns an immediate error string if setup fails; otherwise `nil`.
     func startRecognition(
+        locale: Locale,
+        messages: SpeechServiceMessages,
         onPartialResult: @escaping (String) -> Void,
         onRuntimeError: @escaping (String) -> Void
     ) async -> String? {
-        guard let speechRecognizer, speechRecognizer.isAvailable else {
-            return "Speech recognition isn’t available right now. Check your network or try again later."
-        }
-
         stopTimeoutTask?.cancel()
         stopTimeoutTask = nil
         await cancelOngoingSessionSilently()
+
+        let recognizer = SFSpeechRecognizer(locale: locale)
+        guard let recognizer else {
+            return String(format: messages.unsupportedLocale, locale.identifier)
+        }
+        guard recognizer.isAvailable else {
+            return String(format: messages.localeUnavailable, locale.identifier)
+        }
+
+        sessionRecognizer = recognizer
+        sessionMessages = messages
 
         self.onPartialResult = onPartialResult
         self.onRuntimeError = onRuntimeError
@@ -88,7 +110,7 @@ final class SpeechRecognizerService {
             try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
-            return "Could not use the microphone: \(error.localizedDescription)"
+            return String(format: messages.micUseFailed, error.localizedDescription)
         }
 
         let engine = AVAudioEngine()
@@ -100,7 +122,7 @@ final class SpeechRecognizerService {
         let format = inputNode.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else {
             try? session.setActive(false)
-            return "Microphone input isn’t available on this device."
+            return messages.micInputUnavailable
         }
 
         inputNode.removeTap(onBus: 0)
@@ -111,7 +133,7 @@ final class SpeechRecognizerService {
         audioEngine = engine
         recognitionRequest = request
 
-        recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
             Task { @MainActor in
                 self.handleRecognitionCallback(recognitionResult: result, error: error)
@@ -123,7 +145,7 @@ final class SpeechRecognizerService {
             try engine.start()
         } catch {
             cleanupAfterFailedStart()
-            return "Could not start audio: \(error.localizedDescription)"
+            return String(format: messages.audioStartFailed, error.localizedDescription)
         }
 
         return nil
@@ -136,7 +158,7 @@ final class SpeechRecognizerService {
             if !trimmed.isEmpty {
                 return .success(trimmed)
             }
-            return .failure(speechRecognitionError("Nothing to stop — start listening first."))
+            return .failure(speechRecognitionError(code: .nothingToStop, fallbackMessage: "Nothing to stop — start listening first."))
         }
 
         isStopping = true
@@ -173,7 +195,8 @@ final class SpeechRecognizerService {
                 }
                 return
             }
-            onRuntimeError?(userFacingRecognitionError(error))
+            let msgs = sessionMessages ?? .english
+            onRuntimeError?(userFacingRecognitionError(error, messages: msgs))
             teardownAfterFailure()
             return
         }
@@ -208,7 +231,7 @@ final class SpeechRecognizerService {
 
     private func teardownAfterFailure() {
         if let cont = stopContinuation {
-            cont.resume(returning: .failure(speechRecognitionError("Recognition stopped.")))
+            cont.resume(returning: .failure(speechRecognitionError(code: .recognitionStopped, fallbackMessage: "Recognition stopped.")))
         }
         stopContinuation = nil
         stopTimeoutTask?.cancel()
@@ -226,8 +249,10 @@ final class SpeechRecognizerService {
             engine.reset()
         }
         audioEngine = nil
+        sessionRecognizer = nil
         onPartialResult = nil
         onRuntimeError = nil
+        sessionMessages = nil
         isStopping = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -237,8 +262,10 @@ final class SpeechRecognizerService {
         recognitionTask = nil
         recognitionRequest = nil
         audioEngine = nil
+        sessionRecognizer = nil
         onPartialResult = nil
         onRuntimeError = nil
+        sessionMessages = nil
         isStopping = false
 
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -248,7 +275,7 @@ final class SpeechRecognizerService {
         stopTimeoutTask?.cancel()
         stopTimeoutTask = nil
         if let cont = stopContinuation {
-            cont.resume(returning: .failure(speechRecognitionError("Interrupted.")))
+            cont.resume(returning: .failure(speechRecognitionError(code: .interrupted, fallbackMessage: "Interrupted.")))
         }
         stopContinuation = nil
         recognitionTask?.cancel()
@@ -261,34 +288,36 @@ final class SpeechRecognizerService {
             engine.reset()
         }
         audioEngine = nil
+        sessionRecognizer = nil
         onPartialResult = nil
         onRuntimeError = nil
+        sessionMessages = nil
         isStopping = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         await Task.yield()
     }
 
-    private func speechAuthErrorMessage(for status: SFSpeechRecognizerAuthorizationStatus) -> String {
+    private func speechAuthErrorMessage(for status: SFSpeechRecognizerAuthorizationStatus, messages: SpeechServiceMessages) -> String {
         switch status {
         case .denied:
-            return "Speech recognition is turned off. Enable it in Settings → Privacy → Speech Recognition."
+            return messages.speechDeniedSettings
         case .restricted:
-            return "Speech recognition is restricted on this device."
+            return messages.speechRestricted
         case .notDetermined:
-            return "Speech recognition permission is required."
+            return messages.speechNotDetermined
         default:
-            return "Speech recognition isn’t allowed."
+            return messages.speechNotAllowed
         }
     }
 
-    private func userFacingRecognitionError(_ error: Error) -> String {
+    private func userFacingRecognitionError(_ error: Error, messages: SpeechServiceMessages) -> String {
         let ns = error as NSError
         if ns.domain == "kAFAssistantErrorDomain", ns.code == 203 {
-            return "No speech was detected. Try again and speak a bit closer to the microphone."
+            return messages.noSpeechDetected
         }
         if ns.domain == "kAFAssistantErrorDomain", ns.code == 216 {
-            return "Recognition was canceled."
+            return messages.recognitionCanceled
         }
-        return "Speech recognition failed: \(error.localizedDescription)"
+        return String(format: messages.recognitionFailedFormat, error.localizedDescription)
     }
 }

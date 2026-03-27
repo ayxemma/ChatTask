@@ -20,8 +20,10 @@ enum TaskRowScheduleContext {
 
 struct TaskRowCompletionButton: View {
     @Bindable var task: TaskItem
+    @Environment(AppSettings.self) private var appSettings
 
     var body: some View {
+        let s = appSettings.language.strings
         Button {
             let newValue = !task.isCompleted
             task.isCompleted = newValue
@@ -33,7 +35,7 @@ struct TaskRowCompletionButton: View {
                 .foregroundStyle(task.isCompleted ? Color.accentColor : Color.secondary)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(task.isCompleted ? "Mark incomplete" : "Mark complete")
+        .accessibilityLabel(task.isCompleted ? s.markIncomplete : s.markComplete)
     }
 }
 
@@ -41,7 +43,12 @@ struct TaskRowMainContent: View {
     @Bindable var task: TaskItem
     var scheduleContext: TaskRowScheduleContext
 
+    @Environment(\.locale) private var locale
+    @Environment(AppSettings.self) private var appSettings
+
     private var calendar: Calendar { .current }
+
+    private var strings: AppStrings { appSettings.language.strings }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -67,14 +74,14 @@ struct TaskRowMainContent: View {
                 }
 
                 if showUpcomingDaySubtitle, let d = task.scheduledDate {
-                    Text(Self.daySubtitleFormatter.string(from: d))
+                    Text(d.formatted(Date.FormatStyle().weekday(.abbreviated).month(.abbreviated).day().locale(locale)))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .strikethrough(task.isCompleted)
                 }
 
                 if showOverdueDaySubtitle, let d = task.scheduledDate {
-                    Text(Self.daySubtitleFormatter.string(from: d))
+                    Text(d.formatted(Date.FormatStyle().weekday(.abbreviated).month(.abbreviated).day().locale(locale)))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .strikethrough(task.isCompleted)
@@ -85,9 +92,10 @@ struct TaskRowMainContent: View {
     }
 
     private var timePrefix: String {
-        guard let d = task.scheduledDate else { return "Anytime" }
-        guard TaskScheduleFormatting.hasWallClockTime(d, calendar: calendar) else { return "Anytime" }
-        return Self.timeOnlyFormatter.string(from: d)
+        let s = strings
+        guard let d = task.scheduledDate else { return s.anytime }
+        guard TaskScheduleFormatting.hasWallClockTime(d, calendar: calendar) else { return s.anytime }
+        return d.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(locale))
     }
 
     private var showUpcomingDaySubtitle: Bool {
@@ -127,25 +135,19 @@ struct TaskRowMainContent: View {
     }
 
     private static let timeColumnWidth: CGFloat = 82
-
-    private static let timeOnlyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
-
-    private static let daySubtitleFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "EEE, MMM d"
-        return f
-    }()
 }
 
 struct TaskRowView: View {
     @Bindable var task: TaskItem
     var emphasizeCompleted: Bool
     var scheduleContext: TaskRowScheduleContext
+
+    @Environment(\.locale) private var locale
+    @Environment(AppSettings.self) private var appSettings
+
+    private var calendar: Calendar { .current }
+
+    private var strings: AppStrings { appSettings.language.strings }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -158,26 +160,18 @@ struct TaskRowView: View {
         .accessibilityLabel(accessibilityLabelText)
     }
 
-    private var calendar: Calendar { .current }
-
     private var accessibilityLabelText: String {
+        let s = strings
         var parts: [String] = []
         if let d = task.scheduledDate, TaskScheduleFormatting.hasWallClockTime(d, calendar: calendar) {
-            parts.append(Self.timeOnlyFormatter.string(from: d))
+            parts.append(d.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(locale)))
         } else {
-            parts.append("Anytime")
+            parts.append(s.anytime)
         }
         parts.append(task.title)
         if let n = task.notes, !n.isEmpty { parts.append(n) }
         return parts.joined(separator: ", ")
     }
-
-    private static let timeOnlyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
-    }()
 }
 
 /// Completion control stays independent; main content navigates to detail.
@@ -185,6 +179,10 @@ struct TaskNavigableRow: View {
     @Bindable var task: TaskItem
     var emphasizeCompleted: Bool
     var scheduleContext: TaskRowScheduleContext
+
+    @Environment(AppSettings.self) private var appSettings
+
+    private var strings: AppStrings { appSettings.language.strings }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -195,7 +193,7 @@ struct TaskNavigableRow: View {
                 TaskRowMainContent(task: task, scheduleContext: scheduleContext)
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Edit task details")
+            .accessibilityHint(strings.editTaskDetails)
         }
         .padding(.vertical, 4)
         .opacity(emphasizeCompleted && task.isCompleted ? 0.75 : 1)

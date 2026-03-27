@@ -1,20 +1,23 @@
 import SwiftUI
 
 struct RootTabView: View {
+    @Environment(AppSettings.self) private var appSettings
+
     var body: some View {
+        let s = appSettings.language.strings
         TabView {
             NavigationStack {
                 HomeView()
             }
             .tabItem {
-                Label("Home", systemImage: "house.fill")
+                Label(s.homeTab, systemImage: "house.fill")
             }
 
             NavigationStack {
                 CalendarView()
             }
             .tabItem {
-                Label("Calendar", systemImage: "calendar")
+                Label(s.calendarTab, systemImage: "calendar")
             }
         }
     }

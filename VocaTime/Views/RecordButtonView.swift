@@ -3,6 +3,8 @@ import SwiftUI
 struct RecordButtonView: View {
     let isListening: Bool
     let isEnabled: Bool
+    var startListeningAccessibilityLabel: String = "Start listening"
+    var stopListeningAccessibilityLabel: String = "Stop listening"
     let action: () -> Void
 
     var body: some View {
@@ -23,7 +25,7 @@ struct RecordButtonView: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .accessibilityLabel(isListening ? "Stop listening" : "Start listening")
+        .accessibilityLabel(isListening ? stopListeningAccessibilityLabel : startListeningAccessibilityLabel)
     }
 }
 
