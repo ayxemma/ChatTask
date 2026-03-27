@@ -132,6 +132,10 @@ final class SpeechRecognizerService {
     /// Ends audio input and waits for a final transcript (or timeout using the last partial result).
     func stopRecognition() async -> Result<String, Error> {
         guard audioEngine != nil || recognitionTask != nil else {
+            let trimmed = lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return .success(trimmed)
+            }
             return .failure(speechRecognitionError("Nothing to stop — start listening first."))
         }
 
@@ -181,23 +185,17 @@ final class SpeechRecognizerService {
         onPartialResult?(text)
 
         if recognitionResult.isFinal {
-            if isStopping {
-                finishStopIfNeeded(outcome: .success(text.trimmingCharacters(in: .whitespacesAndNewlines)))
-            } else {
-                onRuntimeError?(
-                    "Recognition ended early (often after a long pause). Tap the microphone to start again."
-                )
-                teardownAfterFailure()
-            }
+            finishStopIfNeeded(outcome: .success(text.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
     }
 
     private func finishStopIfNeeded(outcome: Result<String, Error>) {
-        guard let cont = stopContinuation else { return }
-        stopContinuation = nil
         stopTimeoutTask?.cancel()
         stopTimeoutTask = nil
-        cont.resume(returning: outcome)
+        if let cont = stopContinuation {
+            stopContinuation = nil
+            cont.resume(returning: outcome)
+        }
         fullTeardown()
     }
 

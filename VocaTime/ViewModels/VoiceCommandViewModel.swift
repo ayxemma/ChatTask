@@ -39,6 +39,7 @@ final class VoiceCommandViewModel {
     private let speechService = SpeechRecognizerService()
     private let parsingCoordinator = TaskParsingCoordinator()
     private var persistenceContext: ModelContext?
+    private var silenceTimerTask: Task<Void, Never>?
 
     func attachPersistence(_ context: ModelContext) {
         persistenceContext = context
@@ -65,7 +66,27 @@ final class VoiceCommandViewModel {
         }
     }
 
+    private func resetSilenceTimer() {
+        silenceTimerTask?.cancel()
+        silenceTimerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            guard let self else { return }
+            if self.chatFlowState == .listening {
+                await self.chatFinalizeListening()
+            }
+        }
+    }
+
+    private func cancelSilenceTimer() {
+        silenceTimerTask?.cancel()
+        silenceTimerTask = nil
+    }
+
     func chatBeginListening() async {
+        cancelSilenceTimer()
+
         if let err = await speechService.requestAuthorizationIfNeeded() {
             chatMessages.append(ChatMessage(role: .assistant, text: err))
             chatFlowState = .error
@@ -77,9 +98,11 @@ final class VoiceCommandViewModel {
         let startError = await speechService.startRecognition(
             onPartialResult: { [weak self] text in
                 self?.chatDraftText = text
+                self?.resetSilenceTimer()
             },
             onRuntimeError: { [weak self] message in
                 guard let self else { return }
+                self.cancelSilenceTimer()
                 self.chatMessages.append(ChatMessage(role: .assistant, text: message))
                 self.chatFlowState = .error
             }
@@ -92,9 +115,12 @@ final class VoiceCommandViewModel {
         }
 
         chatFlowState = .listening
+        resetSilenceTimer()
     }
 
     func chatFinalizeListening() async {
+        silenceTimerTask?.cancel()
+        silenceTimerTask = nil
         chatFlowState = .processing
         let outcome = await speechService.stopRecognition()
         switch outcome {

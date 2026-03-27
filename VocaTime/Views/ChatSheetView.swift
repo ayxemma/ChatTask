@@ -64,6 +64,11 @@ struct ChatSheetView: View {
             }
             .onAppear {
                 viewModel.attachPersistence(modelContext)
+                if viewModel.chatFlowState == .idle {
+                    Task {
+                        await viewModel.chatBeginListening()
+                    }
+                }
             }
         }
     }
