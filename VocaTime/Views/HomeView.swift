@@ -100,16 +100,6 @@ struct HomeView: View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(spacing: 24) {
-                    VStack(spacing: 8) {
-                        Text("VocaTime")
-                            .font(.largeTitle.weight(.semibold))
-                        Text(s.tagline)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 24)
-
                     statusStrip
 
                     dashboardSection
@@ -124,6 +114,7 @@ struct HomeView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 100)
                 }
+                .padding(.top, 8)
             }
 
             Button {
@@ -151,7 +142,7 @@ struct HomeView: View {
             }
             .presentationDragIndicator(.visible)
         }
-        .navigationTitle(strings.homeTab)
+        .navigationTitle(strings.tasks)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
@@ -196,10 +187,6 @@ struct HomeView: View {
     private var dashboardSection: some View {
         let s = strings
         return VStack(alignment: .leading, spacing: 20) {
-            Text(s.tasks)
-                .font(.title2.weight(.semibold))
-                .padding(.horizontal)
-
             taskColumn(column: .today, items: todayTaskItems, isExpanded: $isTodayExpanded)
             taskColumn(column: .overdue, items: overdueTaskItems, isExpanded: $isOverdueExpanded)
             taskColumn(column: .upcoming, items: upcomingTaskItems, isExpanded: $isUpcomingExpanded)
