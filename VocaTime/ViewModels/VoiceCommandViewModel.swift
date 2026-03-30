@@ -227,6 +227,18 @@ final class VoiceCommandViewModel {
         return ns.localizedDescription
     }
 
+    /// Resets all session state so the next sheet presentation starts clean.
+    /// Called from `ChatSheetView.onDisappear` — safe to call on any dismiss (success, manual, or error).
+    func prepareForNewSession() async {
+        await speechService.cancelForReset()
+        cancelMaxRecordingTimer()
+        chatFlowState = .idle
+        chatDraftText = ""
+        chatMessages = []
+        parsedCommand = nil
+        Self.log.info("[VoiceChat] chatDismissReset completed — state ready for new session")
+    }
+
     private func applyChatParse(transcript: String) async {
         Self.log.info("[VoiceChat] parse input appUILanguage=\(self.uiLanguage.rawValue, privacy: .public) transcript=\(transcript, privacy: .public)")
         let command = await parsingCoordinator.parse(
@@ -241,6 +253,7 @@ final class VoiceCommandViewModel {
         chatMessages.append(ChatMessage(role: .assistant, text: reply))
         if let ctx = persistenceContext {
             TaskItem.insertFromParsedCommand(command, context: ctx)
+            Self.log.info("[VoiceChat] taskSaveSuccess title=\(command.title, privacy: .public) actionType=\(String(describing: command.actionType), privacy: .public)")
         }
         chatFlowState = .success
     }

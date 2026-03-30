@@ -1,3 +1,4 @@
+import os.log
 import SwiftUI
 
 struct ChatSheetView: View {
@@ -7,6 +8,11 @@ struct ChatSheetView: View {
     @Environment(\.locale) private var locale
     @Environment(\.modelContext) private var modelContext
 
+    /// Task that fires auto-dismiss after a short confirmation delay. Cancelled on disappear to prevent
+    /// a stale dismiss from firing on a subsequently re-opened sheet.
+    @State private var autoDismissTask: Task<Void, Never>?
+
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "ChatSheet")
     private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
@@ -72,17 +78,34 @@ struct ChatSheetView: View {
             .onAppear {
                 viewModel.attachPersistence(modelContext)
                 viewModel.uiLanguage = appUILanguage
-                if viewModel.chatFlowState == .idle {
-                    Task {
-                        await viewModel.chatBeginListening()
-                    }
+                // Always auto-start — state is reset to .idle in onDisappear via prepareForNewSession().
+                Self.log.info("[ChatSheet] chatAutoStart — sheet opened, beginning recording")
+                Task { await viewModel.chatBeginListening() }
+            }
+            .onDisappear {
+                // Cancel any pending auto-dismiss so it doesn't fire on a re-opened sheet.
+                autoDismissTask?.cancel()
+                autoDismissTask = nil
+                // Tear down recording and reset all state so the next open starts clean.
+                Task {
+                    await viewModel.prepareForNewSession()
+                    Self.log.info("[ChatSheet] chatDismissComplete — recorder released, state reset")
+                }
+            }
+            .onChange(of: viewModel.chatFlowState) { _, newState in
+                guard newState == .success else { return }
+                // Let the user read the confirmation briefly, then auto-close.
+                autoDismissTask?.cancel()
+                autoDismissTask = Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    guard !Task.isCancelled else { return }
+                    Self.log.info("[ChatSheet] autoDismiss triggered — task saved, closing sheet")
+                    dismiss()
                 }
             }
             .onChange(of: appUILanguage) { _, newValue in
                 viewModel.uiLanguage = newValue
-                Task {
-                    await viewModel.handleUILanguageChanged()
-                }
+                Task { await viewModel.handleUILanguageChanged() }
             }
         }
     }
