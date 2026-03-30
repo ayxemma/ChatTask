@@ -35,8 +35,15 @@ final class VoiceCommandViewModel {
     var chatFlowState: VoiceFlowState = .idle
     var chatDraftText: String = ""
     var parsedCommand: ParsedCommand?
-    /// Synced from `AppSettings.language` by the owning view.
-    var appLanguage: AppLanguage = .defaultForDevice()
+
+    /// Backing store for UI/speech locale (synced from `@AppStorage` via owning views).
+    var chatSpeechInputLanguage: AppUILanguage = .defaultForDevice()
+
+    /// Same as `chatSpeechInputLanguage` (legacy name for speech/UI alignment).
+    var appLanguage: AppUILanguage {
+        get { chatSpeechInputLanguage }
+        set { chatSpeechInputLanguage = newValue }
+    }
 
     private let speechService = SpeechRecognizerService()
     private let parsingCoordinator = TaskParsingCoordinator(
@@ -203,7 +210,7 @@ final class VoiceCommandViewModel {
             let label: String
             if name.isEmpty {
                 label = s.chatYourTask
-            } else if appLanguage == .english {
+            } else if appLanguage == .en {
                 label = "“\(name)”"
             } else {
                 label = "「\(name)」"
@@ -213,12 +220,12 @@ final class VoiceCommandViewModel {
 
         let low = userTranscript.lowercased()
         if command.actionType == .reminder {
-            if let n = extractLeadingMinutes(from: low, language: appLanguage) {
+            if let n = extractLeadingMinutes(from: low) {
                 return n == 1
                     ? String(format: s.chatReminderMinutes, n)
                     : String(format: s.chatReminderMinutesPlural, n)
             }
-            if let n = extractLeadingHours(from: low, language: appLanguage) {
+            if let n = extractLeadingHours(from: low) {
                 return n == 1
                     ? String(format: s.chatReminderHours, n)
                     : String(format: s.chatReminderHoursPlural, n)
@@ -241,22 +248,18 @@ final class VoiceCommandViewModel {
 
     private var replyDateFormatter: DateFormatter {
         let f = DateFormatter()
-        f.locale = appLanguage.uiLocale
+        f.locale = appLanguage.locale
         f.dateStyle = .medium
         f.timeStyle = .short
         return f
     }
 
-    private func extractLeadingMinutes(from low: String, language: AppLanguage) -> Int? {
-        if let n = matchNumber(prefixPattern: #"in\s+(\d+)\s+minutes?"#, in: low) { return n }
-        if language == .chineseSimplified, let n = matchNumber(prefixPattern: #"(\d+)\s*分钟后"#, in: low) { return n }
-        return nil
+    private func extractLeadingMinutes(from low: String) -> Int? {
+        matchNumber(prefixPattern: #"in\s+(\d+)\s+minutes?"#, in: low)
     }
 
-    private func extractLeadingHours(from low: String, language: AppLanguage) -> Int? {
-        if let n = matchNumber(prefixPattern: #"in\s+(\d+)\s+hours?"#, in: low) { return n }
-        if language == .chineseSimplified, let n = matchNumber(prefixPattern: #"(\d+)\s*小时后"#, in: low) { return n }
-        return nil
+    private func extractLeadingHours(from low: String) -> Int? {
+        matchNumber(prefixPattern: #"in\s+(\d+)\s+hours?"#, in: low)
     }
 
     private func matchNumber(prefixPattern: String, in low: String) -> Int? {

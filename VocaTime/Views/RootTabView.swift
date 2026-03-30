@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct RootTabView: View {
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
     var body: some View {
-        let s = appSettings.language.strings
+        let s = appUILanguage.strings
         TabView {
             NavigationStack {
                 HomeView()

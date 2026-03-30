@@ -29,7 +29,8 @@ private enum DashboardColumn {
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PermissionService.self) private var permissionService
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
+    @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
     @State private var viewModel = VoiceCommandViewModel()
@@ -42,7 +43,11 @@ struct HomeView: View {
 
     private var calendar: Calendar { .current }
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
+
+    private var selectedUILanguage: AppUILanguage {
+        AppUILanguage(storageRaw: languageRaw)
+    }
 
     private var overdueTaskItems: [TaskItem] {
         let now = Date()
@@ -146,20 +151,23 @@ struct HomeView: View {
             }
             .presentationDragIndicator(.visible)
         }
+        .navigationTitle(strings.homeTab)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Picker(
-                    "",
-                    selection: Binding(
-                        get: { appSettings.language },
-                        set: { appSettings.language = $0 }
-                    )
-                ) {
-                    Text("EN").tag(AppLanguage.english)
-                    Text("中文").tag(AppLanguage.chineseSimplified)
+                Menu {
+                    Picker("Language", selection: $languageRaw) {
+                        ForEach(AppUILanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang.rawValue)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(selectedUILanguage.displayName)
+                        Text("▾")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 140)
                 .accessibilityLabel("Language")
             }
             ToolbarItem(placement: .primaryAction) {
@@ -172,10 +180,10 @@ struct HomeView: View {
             }
         }
         .onAppear {
-            viewModel.appLanguage = appSettings.language
+            viewModel.appLanguage = selectedUILanguage
         }
-        .onChange(of: appSettings.language) { _, newValue in
-            viewModel.appLanguage = newValue
+        .onChange(of: languageRaw) { _, _ in
+            viewModel.appLanguage = selectedUILanguage
             Task {
                 await viewModel.handleAppLanguageChanged()
             }
@@ -298,7 +306,7 @@ struct HomeView: View {
     NavigationStack {
         HomeView()
             .environment(PermissionService())
-            .environment(AppSettings())
+            .environment(\.appUILanguage, .en)
     }
     .modelContainer(container)
 }

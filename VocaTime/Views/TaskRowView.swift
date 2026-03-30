@@ -20,10 +20,10 @@ enum TaskRowScheduleContext {
 
 struct TaskRowCompletionButton: View {
     @Bindable var task: TaskItem
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
     var body: some View {
-        let s = appSettings.language.strings
+        let s = appUILanguage.strings
         Button {
             let newValue = !task.isCompleted
             task.isCompleted = newValue
@@ -44,11 +44,11 @@ struct TaskRowMainContent: View {
     var scheduleContext: TaskRowScheduleContext
 
     @Environment(\.locale) private var locale
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
     private var calendar: Calendar { .current }
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -143,11 +143,11 @@ struct TaskRowView: View {
     var scheduleContext: TaskRowScheduleContext
 
     @Environment(\.locale) private var locale
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
     private var calendar: Calendar { .current }
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -180,9 +180,9 @@ struct TaskNavigableRow: View {
     var emphasizeCompleted: Bool
     var scheduleContext: TaskRowScheduleContext
 
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {

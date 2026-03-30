@@ -34,8 +34,7 @@
 		A10000000000000000000021 /* TaskScheduleHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* TaskScheduleHelpers.swift */; };
 		A10000000000000000000022 /* TaskComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000022 /* TaskComposerView.swift */; };
 		A10000000000000000000023 /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* Secrets.swift */; };
-		A10000000000000000000025 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AppLanguage.swift */; };
-		A10000000000000000000026 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* AppSettings.swift */; };
+		A10000000000000000000025 /* AppUILanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AppUILanguage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -66,8 +65,7 @@
 		A20000000000000000000021 /* TaskScheduleHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskScheduleHelpers.swift; sourceTree = "<group>"; };
 		A20000000000000000000022 /* TaskComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskComposerView.swift; sourceTree = "<group>"; };
 		A20000000000000000000023 /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
-		A20000000000000000000025 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
-		A20000000000000000000026 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		A20000000000000000000025 /* AppUILanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUILanguage.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* VocaTime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VocaTime.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -108,7 +106,7 @@
 		A50000000000000000000008 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				A20000000000000000000025 /* AppLanguage.swift */,
+				A20000000000000000000025 /* AppUILanguage.swift */,
 				A20000000000000000000010 /* ParsedCommand.swift */,
 				A2000000000000000000001D /* LLMTaskParseResponse.swift */,
 				A20000000000000000000011 /* ReminderItem.swift */,
@@ -153,7 +151,6 @@
 		A50000000000000000000006 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				A20000000000000000000026 /* AppSettings.swift */,
 				A20000000000000000000006 /* PermissionService.swift */,
 				A20000000000000000000009 /* SpeechRecognizerService.swift */,
 				A20000000000000000000014 /* IntentParserService.swift */,
@@ -269,8 +266,7 @@
 				A10000000000000000000021 /* TaskScheduleHelpers.swift in Sources */,
 				A10000000000000000000022 /* TaskComposerView.swift in Sources */,
 				A10000000000000000000023 /* Secrets.swift in Sources */,
-				A10000000000000000000025 /* AppLanguage.swift in Sources */,
-				A10000000000000000000026 /* AppSettings.swift in Sources */,
+				A10000000000000000000025 /* AppUILanguage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

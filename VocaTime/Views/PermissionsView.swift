@@ -3,10 +3,10 @@ import UIKit
 
 struct PermissionsView: View {
     @Environment(PermissionService.self) private var permissionService
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
     @Environment(\.openURL) private var openURL
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
         let s = strings
@@ -53,10 +53,10 @@ struct PermissionsView: View {
 
 private struct PermissionRowView: View {
     @Environment(PermissionService.self) private var permissionService
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
     let kind: PermissionKind
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
         let s = strings
@@ -74,7 +74,7 @@ private struct PermissionRowView: View {
                 .foregroundStyle(.secondary)
             Button(s.requestAccess) {
                 Task {
-                    await permissionService.request(kind, language: appSettings.language)
+                    await permissionService.request(kind, language: appUILanguage)
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -101,6 +101,6 @@ private struct PermissionRowView: View {
     NavigationStack {
         PermissionsView()
             .environment(PermissionService())
-            .environment(AppSettings())
+            .environment(\.appUILanguage, .en)
     }
 }

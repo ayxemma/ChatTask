@@ -5,7 +5,7 @@ struct TaskComposerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
     @State private var title = ""
     @State private var notes = ""
@@ -20,7 +20,7 @@ struct TaskComposerView: View {
 
     private var calendar: Calendar { .current }
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     private var trimmedTitle: String {
         title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -210,7 +210,7 @@ struct TaskComposerView: View {
 #Preview {
     NavigationStack {
         TaskComposerView()
-            .environment(AppSettings())
+            .environment(\.appUILanguage, .en)
             .environment(\.locale, Locale(identifier: "en_US"))
     }
     .modelContainer(for: TaskItem.self, inMemory: true)

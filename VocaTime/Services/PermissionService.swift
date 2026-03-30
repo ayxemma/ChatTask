@@ -83,7 +83,7 @@ final class PermissionService {
         }
     }
 
-    func request(_ kind: PermissionKind, language: AppLanguage) async {
+    func request(_ kind: PermissionKind, language: AppUILanguage) async {
         lastErrorMessage = nil
         let s = language.strings
         switch kind {

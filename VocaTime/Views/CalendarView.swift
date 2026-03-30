@@ -3,7 +3,7 @@ import SwiftUI
 
 struct CalendarView: View {
     @Environment(\.locale) private var locale
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
     @State private var displayedMonth: Date
@@ -16,7 +16,7 @@ struct CalendarView: View {
         return cal
     }
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     init() {
         let cal = Calendar.current
@@ -312,7 +312,7 @@ struct CalendarView: View {
     let container = try! ModelContainer(for: TaskItem.self, configurations: config)
     NavigationStack {
         CalendarView()
-            .environment(AppSettings())
+            .environment(\.appUILanguage, .en)
     }
     .environment(\.locale, Locale(identifier: "en_US"))
     .modelContainer(container)

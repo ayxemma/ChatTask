@@ -4,15 +4,27 @@ import SwiftUI
 @main
 struct VocaTimeApp: App {
     @State private var permissionService = PermissionService()
-    @State private var appSettings = AppSettings()
+
+    init() {
+        AppUILanguage.migrateLegacyUserDefaultsIfNeeded()
+    }
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            AppShellView()
                 .environment(permissionService)
-                .environment(appSettings)
-                .environment(\.locale, appSettings.language.uiLocale)
         }
         .modelContainer(for: TaskItem.self)
+    }
+}
+
+private struct AppShellView: View {
+    @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
+
+    var body: some View {
+        let uiLang = AppUILanguage(storageRaw: languageRaw)
+        RootTabView()
+            .environment(\.appUILanguage, uiLang)
+            .environment(\.locale, uiLang.locale)
     }
 }

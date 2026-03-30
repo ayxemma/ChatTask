@@ -6,7 +6,7 @@ struct TaskDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
 
     @FocusState private var titleFocused: Bool
 
@@ -17,7 +17,7 @@ struct TaskDetailView: View {
 
     private var calendar: Calendar { .current }
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     init(task: TaskItem) {
         self.task = task
@@ -171,7 +171,7 @@ private struct TaskDetailPreviewHost: View {
     var body: some View {
         NavigationStack {
             TaskDetailView(task: task)
-                .environment(AppSettings())
+                .environment(\.appUILanguage, .en)
                 .environment(\.locale, Locale(identifier: "en_US"))
         }
         .modelContainer(container)

@@ -1,73 +1,105 @@
 import Foundation
+import SwiftUI
 
-/// In-app language (UI + speech recognition + formatting). Distinct from `Locale.current`.
-enum AppLanguage: String, CaseIterable, Identifiable, Hashable {
-    case english
-    case chineseSimplified
+// MARK: - App UI language (persisted with @AppStorage key `appUILanguage`)
+
+enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
+    case en = "en"
+    case zhHans = "zh-Hans"
+    case es = "es"
 
     var id: String { rawValue }
 
-    /// Short label for the Home toolbar switcher.
-    var shortToolbarLabel: String {
-        switch self {
-        case .english: return "EN"
-        case .chineseSimplified: return "中文"
-        }
-    }
-
+    /// User-facing name in the language itself (no flags).
     var displayName: String {
         switch self {
-        case .english: return "English"
-        case .chineseSimplified: return "简体中文"
+        case .en: return "English"
+        case .zhHans: return "简体中文"
+        case .es: return "Español"
         }
     }
 
-    /// BCP 47 identifier for `SFSpeechRecognizer`.
+    static let storageKey = "appUILanguage"
+
+    /// BCP 47 for `SFSpeechRecognizer` (UI language alignment; task text is never translated).
     var speechRecognitionLocaleIdentifier: String {
         switch self {
-        case .english: return "en-US"
-        case .chineseSimplified: return "zh-CN"
+        case .en: return "en-US"
+        case .zhHans: return "zh-CN"
+        case .es: return "es-ES"
         }
     }
 
-    /// Locale for UI strings, `DateFormatter`, and SwiftUI `FormatStyle`.
-    var uiLocaleIdentifier: String {
+    var locale: Locale {
         switch self {
-        case .english: return "en_US"
-        case .chineseSimplified: return "zh_CN"
+        case .en: return Locale(identifier: "en_US")
+        case .zhHans: return Locale(identifier: "zh_CN")
+        case .es: return Locale(identifier: "es_ES")
         }
     }
 
-    var uiLocale: Locale {
-        Locale(identifier: uiLocaleIdentifier)
+    var uiLocaleIdentifier: String {
+        locale.identifier.replacingOccurrences(of: "-", with: "_")
     }
 
     var speechLocale: Locale {
         Locale(identifier: speechRecognitionLocaleIdentifier)
     }
 
-    static func defaultForDevice() -> AppLanguage {
+    init(storageRaw: String) {
+        self = AppUILanguage(rawValue: storageRaw) ?? .en
+    }
+
+    static func defaultForDevice() -> AppUILanguage {
         let primary = Locale.preferredLanguages.first?.lowercased() ?? ""
-        if primary.hasPrefix("zh-hans") || primary.hasPrefix("zh-cn") {
-            return .chineseSimplified
+        if primary.hasPrefix("zh-hans") || primary.hasPrefix("zh-cn") { return .zhHans }
+        if primary.hasPrefix("es") { return .es }
+        return .en
+    }
+
+    static func migrateLegacyUserDefaultsIfNeeded() {
+        guard UserDefaults.standard.object(forKey: storageKey) == nil else { return }
+        if let old = UserDefaults.standard.string(forKey: "appLanguage") {
+            switch old {
+            case "chineseSimplified": UserDefaults.standard.set(zhHans.rawValue, forKey: storageKey)
+            case "english": UserDefaults.standard.set(en.rawValue, forKey: storageKey)
+            default: break
+            }
         }
-        return .english
     }
 
     var strings: AppStrings {
         switch self {
-        case .english: return .english
-        case .chineseSimplified: return .chineseSimplified
+        case .en: return .english
+        case .zhHans: return .chineseSimplified
+        case .es: return .spanish
         }
     }
 
     var speechMessages: SpeechServiceMessages {
         switch self {
-        case .english: return .english
-        case .chineseSimplified: return .chineseSimplified
+        case .en: return .english
+        case .zhHans: return .chineseSimplified
+        case .es: return .spanish
         }
     }
 }
+
+// MARK: - Environment
+
+private enum AppUILanguageEnvironmentKey: EnvironmentKey {
+    static let defaultValue: AppUILanguage = .en
+}
+
+extension EnvironmentValues {
+    var appUILanguage: AppUILanguage {
+        get { self[AppUILanguageEnvironmentKey.self] }
+        set { self[AppUILanguageEnvironmentKey.self] = newValue }
+    }
+}
+
+/// Legacy name for `AppUILanguage`.
+typealias SpeechInputLanguage = AppUILanguage
 
 // MARK: - UI strings
 
@@ -362,6 +394,105 @@ struct AppStrings {
         permissionCalendarDenied: "日历权限被拒绝。可在设置中开启。",
         permissionCalendarErrorPrefix: "日历错误："
     )
+
+    static let spanish = AppStrings(
+        tagline: "Habla → Entiende → Planifica → Recuerda",
+        permissionStatus: "Estado de permisos",
+        tasks: "Tareas",
+        today: "Hoy",
+        overdue: "Atrasadas",
+        upcoming: "Próximas",
+        doneColumn: "Hechas",
+        nothingHereYet: "Nada por aquí",
+        permissionsDeniedPrefix: "Algunos permisos están denegados:",
+        openPermissionHint: "Abre Estado de permisos para solicitar acceso o cámbialo en Ajustes.",
+        openCommandChat: "Abrir chat de comandos",
+        newTaskA11y: "Nueva tarea",
+        homeTab: "Inicio",
+        calendarTab: "Calendario",
+        calendarTitle: "Calendario",
+        previousMonth: "Mes anterior",
+        nextMonth: "Mes siguiente",
+        noTasksThisDay: "No hay tareas este día",
+        commandTitle: "Comando",
+        dismissDone: "Listo",
+        titlePlaceholder: "Título",
+        notesPlaceholder: "Notas",
+        date: "Fecha",
+        time: "Hora",
+        removeDate: "Quitar fecha",
+        specificTime: "Hora concreta",
+        none: "Ninguna",
+        todaySummary: "Hoy",
+        tomorrowSummary: "Mañana",
+        anytime: "Cualquier hora",
+        newTask: "Nueva tarea",
+        cancel: "Cancelar",
+        add: "Añadir",
+        taskSection: "Tarea",
+        scheduleSection: "Planificación",
+        scheduledToggle: "Programada",
+        datePickerLabel: "Fecha",
+        timePickerLabel: "Hora",
+        scheduleHint: "Desactiva «Hora concreta» para tratar la tarea como «Cualquier hora» ese día.",
+        completed: "Completada",
+        deleteTask: "Eliminar tarea",
+        markComplete: "Marcar como completada",
+        markIncomplete: "Marcar como pendiente",
+        editTaskDetails: "Editar detalles de la tarea",
+        permissionsNavigationTitle: "Permisos",
+        permissionsIntro: "VocaTime necesita estos permisos para oírte, entender el habla, enviar recordatorios y añadir eventos al calendario. Los elementos denegados se pueden cambiar en Ajustes.",
+        permissionsStatusHeader: "Estado",
+        lastMessageHeader: "Último mensaje",
+        settings: "Ajustes",
+        requestAccess: "Solicitar acceso",
+        permissionMicrophone: "Micrófono",
+        permissionSpeech: "Reconocimiento de voz",
+        permissionNotifications: "Notificaciones",
+        permissionCalendar: "Calendario",
+        permissionMicExplanation: "Necesario para oír tus comandos de voz.",
+        permissionSpeechExplanation: "Necesario para convertir el habla en texto.",
+        permissionNotificationsExplanation: "Necesario para recordarte a tiempo.",
+        permissionCalendarExplanation: "Necesario para añadir eventos a tu calendario.",
+        statusNotAsked: "Sin preguntar",
+        statusAllowed: "Permitido",
+        statusDenied: "Denegado",
+        statusRestricted: "Restringido",
+        statusProvisional: "Provisional",
+        statusUnknown: "Desconocido",
+        voiceTapToSpeak: "Toca el micrófono para hablar.",
+        voiceListening: "Escuchando… toca de nuevo cuando termines.",
+        voiceProcessing: "Procesando…",
+        voiceReady: "Listo para tu siguiente comando.",
+        voiceError: "Algo salió mal — inténtalo de nuevo.",
+        voiceStartListening: "Empezar a escuchar",
+        voiceStopListening: "Dejar de escuchar",
+        chatEmptyTranscript: "No te he oído bien. Habla un poco más.",
+        chatUnknownSchedule: """
+            Guardé %@, pero no pude deducir con seguridad una fecha u hora de lo que dijiste.
+
+            Abre la tarea desde Inicio o Calendario, tócala y configura la planificación en el editor (o déjala como «Cualquier hora»).
+            """,
+        chatTryRemind: "Aún no sé programar eso. Prueba «recuérdame…» o «hoy a las 15:00…».",
+        chatReminderMinutes: "De acuerdo. Te recordaré en %d minuto.",
+        chatReminderMinutesPlural: "De acuerdo. Te recordaré en %d minutos.",
+        chatReminderHours: "De acuerdo. Te recordaré en %d hora.",
+        chatReminderHoursPlural: "De acuerdo. Te recordaré en %d horas.",
+        chatReminderAt: "De acuerdo. Te recordaré a las %@ sobre «%@».",
+        chatReminderAbout: "De acuerdo. Te recordaré sobre «%@».",
+        chatEventAt: "De acuerdo. Anoté «%@» para %@.",
+        chatEventCalendar: "De acuerdo. Anoté «%@» en tu calendario.",
+        chatYourTask: "tu tarea",
+        taskCountOne: "1 tarea",
+        taskCountMany: "%d tareas",
+        selected: "seleccionado",
+        permissionMicDeniedAfterRequest: "Se denegó el micrófono. Puedes activarlo en Ajustes.",
+        permissionSpeechDeniedAfterRequest: "Se denegó el reconocimiento de voz. Puedes activarlo en Ajustes.",
+        permissionNotificationsDenied: "No se permitieron notificaciones. Puedes activarlas en Ajustes.",
+        permissionNotificationsErrorPrefix: "No se pudieron solicitar notificaciones:",
+        permissionCalendarDenied: "Se denegó el calendario. Puedes activarlo en Ajustes.",
+        permissionCalendarErrorPrefix: "Error de calendario:"
+    )
 }
 
 extension PermissionKind {
@@ -449,6 +580,28 @@ struct SpeechServiceMessages: Equatable {
         recognitionFailedFormat: "语音识别失败：%@",
         recognitionStopped: "识别已停止。",
         interrupted: "已中断。"
+    )
+
+    static let spanish = SpeechServiceMessages(
+        speechNotAvailable: "El reconocimiento de voz no está disponible.",
+        micDeniedSettings: "Micrófono denegado. Actívalo en Ajustes → Privacidad → Micrófono.",
+        micDenied: "Micrófono denegado. Actívalo en Ajustes → Privacidad → Micrófono.",
+        micUnavailable: "El micrófono no está disponible.",
+        unsupportedLocale: "No hay reconocimiento de voz para «%@». Prueba otro idioma.",
+        localeUnavailable: "El reconocimiento de voz no está disponible para «%@» ahora. Prueba en inglés, revisa la red o inténtalo más tarde.",
+        micUseFailed: "No se pudo usar el micrófono: %@",
+        micInputUnavailable: "No hay entrada de micrófono en este dispositivo.",
+        audioStartFailed: "No se pudo iniciar el audio: %@",
+        nothingToStop: "Nada que detener — empieza a escuchar primero.",
+        speechDeniedSettings: "Reconocimiento de voz desactivado. Actívalo en Ajustes → Privacidad → Reconocimiento de voz.",
+        speechRestricted: "El reconocimiento de voz está restringido en este dispositivo.",
+        speechNotDetermined: "Se necesita permiso de reconocimiento de voz.",
+        speechNotAllowed: "No se permite el reconocimiento de voz.",
+        noSpeechDetected: "No se detectó voz. Inténtalo de nuevo, más cerca del micrófono.",
+        recognitionCanceled: "Reconocimiento cancelado.",
+        recognitionFailedFormat: "Falló el reconocimiento de voz: %@",
+        recognitionStopped: "Reconocimiento detenido.",
+        interrupted: "Interrumpido."
     )
 }
 

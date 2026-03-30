@@ -2,12 +2,12 @@ import SwiftUI
 
 struct ChatSheetView: View {
     @Bindable var viewModel: VoiceCommandViewModel
-    @Environment(AppSettings.self) private var appSettings
+    @Environment(\.appUILanguage) private var appUILanguage
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @Environment(\.modelContext) private var modelContext
 
-    private var strings: AppStrings { appSettings.language.strings }
+    private var strings: AppStrings { appUILanguage.strings }
 
     var body: some View {
         let s = strings
@@ -71,14 +71,14 @@ struct ChatSheetView: View {
             }
             .onAppear {
                 viewModel.attachPersistence(modelContext)
-                viewModel.appLanguage = appSettings.language
+                viewModel.appLanguage = appUILanguage
                 if viewModel.chatFlowState == .idle {
                     Task {
                         await viewModel.chatBeginListening()
                     }
                 }
             }
-            .onChange(of: appSettings.language) { _, newValue in
+            .onChange(of: appUILanguage) { _, newValue in
                 viewModel.appLanguage = newValue
                 Task {
                     await viewModel.handleAppLanguageChanged()
@@ -110,6 +110,6 @@ struct ChatSheetView: View {
 
 #Preview {
     ChatSheetView(viewModel: VoiceCommandViewModel())
-        .environment(AppSettings())
+        .environment(\.appUILanguage, .en)
         .environment(\.locale, Locale(identifier: "en_US"))
 }
