@@ -73,6 +73,22 @@ struct ChatSheetView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .padding(.top, 2)
+                    } else if viewModel.chatFlowState == .deletePending {
+                        HStack(spacing: 12) {
+                            Button(s.chatDeleteKeep) {
+                                viewModel.chatCancelDelete()
+                            }
+                            .buttonStyle(.bordered)
+                            .frame(maxWidth: .infinity)
+
+                            Button(s.chatDeleteConfirm) {
+                                viewModel.chatConfirmDelete()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            .frame(maxWidth: .infinity)
+                        }
+                        .padding(.top, 2)
                     } else {
                         RecordButtonView(
                             isListening: viewModel.chatFlowState == .listening,

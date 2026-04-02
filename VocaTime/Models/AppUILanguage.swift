@@ -185,6 +185,15 @@ struct AppStrings {
     let chatConflictAddAnyway: String
     let chatConflictCancel: String
     let chatConflictCanceled: String
+    let chatEditNoTaskFound: String
+    let chatEditAmbiguousTask: String
+    let chatDeletePrompt: String
+    let chatDeleteConfirm: String
+    let chatDeleteKeep: String
+    let chatDeleteSuccess: String
+    let chatDeleteCanceled: String
+    let chatRescheduleSuccess: String
+    let chatAppendSuccess: String
 
     static let english = AppStrings(
         tagline: "Speak → Understand → Schedule → Remind",
@@ -287,7 +296,16 @@ struct AppStrings {
         chatConflictWarning: "Heads up — you already have \"%@\" at %@. Add \"%@\" at the same time anyway?",
         chatConflictAddAnyway: "Add anyway",
         chatConflictCancel: "Don't add",
-        chatConflictCanceled: "Got it, task not saved."
+        chatConflictCanceled: "Got it, task not saved.",
+        chatEditNoTaskFound: "I couldn't find a task at that time. Try saying the time more precisely.",
+        chatEditAmbiguousTask: "I found more than one task around that time. Please be more specific.",
+        chatDeletePrompt: "Delete \"%@\"?",
+        chatDeleteConfirm: "Delete",
+        chatDeleteKeep: "Keep it",
+        chatDeleteSuccess: "Deleted \"%@\".",
+        chatDeleteCanceled: "OK, kept it.",
+        chatRescheduleSuccess: "Done — moved \"%@\" to %@.",
+        chatAppendSuccess: "Added note to \"%@\"."
     )
 
     static let chineseSimplified = AppStrings(
@@ -391,7 +409,16 @@ struct AppStrings {
         chatConflictWarning: "注意：你已有「%@」安排在 %@。仍要添加「%@」吗？",
         chatConflictAddAnyway: "仍要添加",
         chatConflictCancel: "不添加",
-        chatConflictCanceled: "好的，已取消。"
+        chatConflictCanceled: "好的，已取消。",
+        chatEditNoTaskFound: "找不到该时间的任务，请说得更精确一些。",
+        chatEditAmbiguousTask: "该时间附近有多个任务，请说得更具体一些。",
+        chatDeletePrompt: "删除「%@」？",
+        chatDeleteConfirm: "删除",
+        chatDeleteKeep: "保留",
+        chatDeleteSuccess: "已删除「%@」。",
+        chatDeleteCanceled: "好的，已保留。",
+        chatRescheduleSuccess: "已完成——将「%@」改到 %@。",
+        chatAppendSuccess: "已为「%@」添加备注。"
     )
 
     static let spanish = AppStrings(
@@ -495,7 +522,16 @@ struct AppStrings {
         chatConflictWarning: "Aviso: ya tienes \"%@\" a las %@. ¿Añadir \"%@\" a la misma hora de todas formas?",
         chatConflictAddAnyway: "Añadir igual",
         chatConflictCancel: "No añadir",
-        chatConflictCanceled: "Entendido, tarea no guardada."
+        chatConflictCanceled: "Entendido, tarea no guardada.",
+        chatEditNoTaskFound: "No encontré ninguna tarea a esa hora. Intenta decir la hora más exactamente.",
+        chatEditAmbiguousTask: "Encontré varias tareas cerca de esa hora. Por favor, sé más específico.",
+        chatDeletePrompt: "¿Eliminar \"%@\"?",
+        chatDeleteConfirm: "Eliminar",
+        chatDeleteKeep: "Conservar",
+        chatDeleteSuccess: "Eliminado \"%@\".",
+        chatDeleteCanceled: "De acuerdo, conservado.",
+        chatRescheduleSuccess: "Listo — moví \"%@\" a %@.",
+        chatAppendSuccess: "Nota añadida a \"%@\"."
     )
 }
 

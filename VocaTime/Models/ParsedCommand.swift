@@ -1,9 +1,14 @@
 import Foundation
 
 enum ActionType: String, CaseIterable, Equatable {
+    // ── Create ────────────────────────────────────────────────
     case reminder
     case calendarEvent
     case unknown
+    // ── Edit (voice-based task editing) ──────────────────────
+    case deleteTask
+    case rescheduleTask
+    case appendToTask
 }
 
 enum ParserSource: String, Codable, Equatable {
@@ -13,14 +18,25 @@ enum ParserSource: String, Codable, Equatable {
 }
 
 struct ParsedCommand: Equatable {
+    // Core fields (create and edit)
     var originalText: String
     var actionType: ActionType
     var title: String
     var notes: String?
+
+    // Create-task fields
     var startDate: Date?
     var endDate: Date?
     var reminderDate: Date?
     var confidence: Double?
     var parserSource: ParserSource
     var languageCode: String?
+
+    // Edit-command fields (nil for create commands)
+    /// The time reference used to identify an existing task.
+    var targetDate: Date? = nil
+    /// The new scheduled time for rescheduleTask commands.
+    var newScheduledDate: Date? = nil
+    /// Text to append to an existing task's notes.
+    var appendText: String? = nil
 }

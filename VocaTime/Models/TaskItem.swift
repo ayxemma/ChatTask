@@ -66,7 +66,7 @@ final class TaskItem {
         switch command.actionType {
         case .reminder: kind = .reminder
         case .calendarEvent: kind = .event
-        case .unknown: kind = .task
+        case .unknown, .deleteTask, .rescheduleTask, .appendToTask: kind = .task
         }
         let now = Date()
         let item = TaskItem(

@@ -26,6 +26,7 @@ enum VoiceFlowState: Equatable {
     case listening
     case processing
     case conflictPending
+    case deletePending
     case success
     case error
 }
@@ -41,6 +42,8 @@ final class VoiceCommandViewModel {
     var parsedCommand: ParsedCommand?
     /// Holds a parsed command that is waiting for the user to confirm or dismiss a conflict warning.
     private var pendingConflictCommand: ParsedCommand?
+    /// Holds a task that is waiting for delete confirmation.
+    private var pendingDeleteTask: TaskItem?
 
     /// In-app UI language only (labels, helper text, date formatting). Does not select speech recognition locale.
     var uiLanguage: AppUILanguage = .defaultForDevice()
@@ -64,7 +67,7 @@ final class VoiceCommandViewModel {
         case .idle: return s.voiceTapToSpeak
         case .listening: return s.voiceListening
         case .processing: return s.voiceProcessing
-        case .conflictPending: return ""
+        case .conflictPending, .deletePending: return ""
         case .success: return s.voiceReady
         case .error: return s.voiceError
         }
@@ -87,7 +90,7 @@ final class VoiceCommandViewModel {
         case .listening:
             Self.log.info("[VoiceChat] stopReason=manual — user tapped mic to stop")
             Task { await chatFinalizeListening() }
-        case .processing, .conflictPending:
+        case .processing, .conflictPending, .deletePending:
             break
         }
     }
@@ -241,6 +244,7 @@ final class VoiceCommandViewModel {
         chatMessages = []
         parsedCommand = nil
         pendingConflictCommand = nil
+        pendingDeleteTask = nil
         Self.log.info("[VoiceChat] chatDismissReset completed — state ready for new session")
     }
 
@@ -255,7 +259,22 @@ final class VoiceCommandViewModel {
         Self.log.info("[VoiceChat] parse outcome actionType=\(String(describing: command.actionType), privacy: .public) parserSource=\(String(describing: command.parserSource), privacy: .public) title=\(command.title, privacy: .public)")
         parsedCommand = command
 
-        // Check for a time conflict before committing the save.
+        // ── Route edit intents ────────────────────────────────────────────────
+        switch command.actionType {
+        case .deleteTask:
+            handleDeleteIntent(command)
+            return
+        case .rescheduleTask:
+            handleRescheduleIntent(command)
+            return
+        case .appendToTask:
+            handleAppendIntent(command)
+            return
+        default:
+            break
+        }
+
+        // ── Create: conflict check then save ─────────────────────────────────
         let scheduledDate = command.reminderDate ?? command.startDate
         if let date = scheduledDate,
            TaskScheduleFormatting.hasWallClockTime(date),
@@ -273,6 +292,115 @@ final class VoiceCommandViewModel {
         commitSave(command: command)
     }
 
+    // MARK: - Edit intent handlers
+
+    private func handleDeleteIntent(_ command: ParsedCommand) {
+        let s = uiLanguage.strings
+        switch resolveTargetTask(near: command.targetDate) {
+        case .notFound:
+            Self.log.info("[VoiceChat] deleteIntent — no task found near targetDate=\(String(describing: command.targetDate), privacy: .public)")
+            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
+            chatFlowState = .error
+        case .ambiguous(let matches):
+            Self.log.info("[VoiceChat] deleteIntent — ambiguous matchCount=\(matches.count, privacy: .public)")
+            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditAmbiguousTask))
+            chatFlowState = .error
+        case .found(let task):
+            Self.log.info("[VoiceChat] deleteIntent — found task title=\(task.title, privacy: .public)")
+            pendingDeleteTask = task
+            let prompt = String(format: s.chatDeletePrompt, task.title)
+            chatMessages.append(ChatMessage(role: .assistant, text: prompt))
+            chatFlowState = .deletePending
+        }
+    }
+
+    private func handleRescheduleIntent(_ command: ParsedCommand) {
+        let s = uiLanguage.strings
+        switch resolveTargetTask(near: command.targetDate) {
+        case .notFound:
+            Self.log.info("[VoiceChat] rescheduleIntent — no task found")
+            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
+            chatFlowState = .error
+        case .ambiguous(let matches):
+            Self.log.info("[VoiceChat] rescheduleIntent — ambiguous matchCount=\(matches.count, privacy: .public)")
+            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditAmbiguousTask))
+            chatFlowState = .error
+        case .found(let task):
+            guard let newDate = command.newScheduledDate else {
+                Self.log.warning("[VoiceChat] rescheduleIntent — newScheduledDate is nil, cannot reschedule")
+                chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
+                chatFlowState = .error
+                return
+            }
+            Self.log.info("[VoiceChat] rescheduleIntent — rescheduling task title=\(task.title, privacy: .public) newDate=\(newDate, privacy: .public)")
+            task.scheduledDate = newDate
+            task.updatedAt = Date()
+            try? persistenceContext?.save()
+            let timeStr = shortTimeFormatter.string(from: newDate)
+            chatMessages.append(ChatMessage(role: .assistant,
+                                            text: String(format: s.chatRescheduleSuccess, task.title, timeStr)))
+            chatFlowState = .success
+        }
+    }
+
+    private func handleAppendIntent(_ command: ParsedCommand) {
+        let s = uiLanguage.strings
+        switch resolveTargetTask(near: command.targetDate) {
+        case .notFound:
+            Self.log.info("[VoiceChat] appendIntent — no task found")
+            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
+            chatFlowState = .error
+        case .ambiguous(let matches):
+            Self.log.info("[VoiceChat] appendIntent — ambiguous matchCount=\(matches.count, privacy: .public)")
+            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditAmbiguousTask))
+            chatFlowState = .error
+        case .found(let task):
+            let text = command.appendText ?? command.title
+            if text.isEmpty {
+                chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
+                chatFlowState = .error
+                return
+            }
+            Self.log.info("[VoiceChat] appendIntent — appending to task title=\(task.title, privacy: .public)")
+            if let existing = task.notes, !existing.isEmpty {
+                task.notes = existing + "\n" + text
+            } else {
+                task.notes = text
+            }
+            task.updatedAt = Date()
+            try? persistenceContext?.save()
+            chatMessages.append(ChatMessage(role: .assistant,
+                                            text: String(format: s.chatAppendSuccess, task.title)))
+            chatFlowState = .success
+        }
+    }
+
+    // MARK: - Delete confirmation
+
+    /// User tapped "Delete" — remove the pending task.
+    func chatConfirmDelete() {
+        guard let task = pendingDeleteTask else { return }
+        let title = task.title
+        pendingDeleteTask = nil
+        Self.log.info("[VoiceChat] deleteConfirmed title=\(title, privacy: .public)")
+        if let ctx = persistenceContext {
+            ctx.delete(task)
+            try? ctx.save()
+        }
+        chatMessages.append(ChatMessage(role: .assistant,
+                                        text: String(format: uiLanguage.strings.chatDeleteSuccess, title)))
+        chatFlowState = .success
+    }
+
+    /// User tapped "Keep it" — cancel the pending delete.
+    func chatCancelDelete() {
+        pendingDeleteTask = nil
+        chatMessages.append(ChatMessage(role: .assistant, text: uiLanguage.strings.chatDeleteCanceled))
+        chatFlowState = .error
+    }
+
+    // MARK: - Conflict confirmation
+
     /// User chose "Add anyway" — save the pending command and finish.
     func chatConfirmConflict() {
         guard let command = pendingConflictCommand else { return }
@@ -286,6 +414,36 @@ final class VoiceCommandViewModel {
         chatMessages.append(ChatMessage(role: .assistant, text: uiLanguage.strings.chatConflictCanceled))
         chatFlowState = .error
     }
+
+    // MARK: - Task resolution
+
+    private enum TaskResolution {
+        case found(TaskItem)
+        case ambiguous([TaskItem])
+        case notFound
+    }
+
+    /// Finds non-completed, timed tasks within ±15 minutes of `targetDate`.
+    private func resolveTargetTask(near targetDate: Date?) -> TaskResolution {
+        guard let targetDate, let ctx = persistenceContext else { return .notFound }
+        let descriptor = FetchDescriptor<TaskItem>(
+            predicate: #Predicate<TaskItem> { !$0.isCompleted }
+        )
+        let candidates = (try? ctx.fetch(descriptor)) ?? []
+        let window: TimeInterval = 15 * 60
+        let matches = candidates.filter { item in
+            guard let d = item.scheduledDate,
+                  TaskScheduleFormatting.hasWallClockTime(d) else { return false }
+            return abs(d.timeIntervalSince(targetDate)) <= window
+        }
+        switch matches.count {
+        case 0: return .notFound
+        case 1: return .found(matches[0])
+        default: return .ambiguous(matches)
+        }
+    }
+
+    // MARK: - Helpers
 
     /// Inserts the task into SwiftData and transitions to `.success`.
     private func commitSave(command: ParsedCommand) {

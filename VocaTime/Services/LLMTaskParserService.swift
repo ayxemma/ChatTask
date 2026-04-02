@@ -21,23 +21,54 @@ struct LLMTaskParserService: TaskParsing {
         let nowString = formatter.string(from: now)
 
         let systemPrompt = """
-        You are a highly capable multilingual task parsing assistant.
-        The user will provide a command which may be in English, Chinese, or a mixture of both.
-        Understand the intent, translate or normalize the title to the primary language spoken, and extract the schedule.
+        You are a highly capable multilingual task assistant.
+        The user speaks commands in English, Chinese, Spanish, or a mixture.
+        Understand the intent, and return ONLY a valid JSON object — no markdown, no extra text.
 
         Current Date/Time: \(nowString)
         Timezone: \(timeZoneIdentifier)
 
-        Return ONLY a valid JSON object matching this schema. Do not wrap it in markdown blocks.
+        Determine the action_type:
+        - "reminder"      — create a reminder task ("remind me to…", "remember to…")
+        - "calendarEvent" — create a calendar/timed event
+        - "unknown"       — create a task but time/type is unclear
+        - "deleteTask"    — user wants to delete or cancel an existing task
+        - "rescheduleTask"— user wants to move/change the time of an existing task
+        - "appendToTask"  — user wants to add extra text/note to an existing task
+
+        For CREATE commands (reminder / calendarEvent / unknown):
+          - "title": the task name
+          - "notes": any extra details
+          - "scheduled_at": ISO8601 datetime if a time is given, else null
+          - "end_at": ISO8601 end time if given, else null
+          - "has_specific_time": true if a clock time is mentioned
+          - "target_time": null
+          - "new_scheduled_at": null
+          - "append_text": null
+
+        For EDIT commands (deleteTask / rescheduleTask / appendToTask):
+          - "title": null (or the task title if the user mentions it by name)
+          - "notes": null
+          - "scheduled_at": null
+          - "end_at": null
+          - "has_specific_time": false
+          - "target_time": ISO8601 datetime of the EXISTING task the user is referring to (required for all edit commands)
+          - "new_scheduled_at": ISO8601 datetime of the new time (rescheduleTask only, else null)
+          - "append_text": the text to add to the task (appendToTask only, else null)
+
+        JSON schema:
         {
-          "title": "The name of the task",
-          "notes": "Any extra contextual details",
-          "action_type": "reminder" | "calendarEvent" | "unknown",
-          "scheduled_at": "ISO8601 formatted string if a specific date or time is mentioned, else null",
-          "end_at": "ISO8601 formatted string if an end time is mentioned, else null",
-          "has_specific_time": true if a specific clock time is mentioned (false if it's just a day/Anytime),
-          "language_code": "en" | "zh" | "mixed",
-          "confidence": 0.9
+          "title": string | null,
+          "notes": string | null,
+          "action_type": "reminder" | "calendarEvent" | "unknown" | "deleteTask" | "rescheduleTask" | "appendToTask",
+          "scheduled_at": string | null,
+          "end_at": string | null,
+          "has_specific_time": boolean,
+          "language_code": "en" | "zh" | "es" | "mixed",
+          "confidence": number,
+          "target_time": string | null,
+          "new_scheduled_at": string | null,
+          "append_text": string | null
         }
         """
 
@@ -111,16 +142,43 @@ struct LLMTaskParserService: TaskParsing {
         Self.logDecodedLLMResponse(parsed)
 
         let tz = TimeZone(identifier: timeZoneIdentifier) ?? .current
+        let (actionType, actionTypeUnmapped) = Self.mapLLMActionType(parsed.actionType)
+        if actionTypeUnmapped {
+            Self.log.warning("[LLM] action_type unmapped raw=\(parsed.actionType ?? "nil", privacy: .public)")
+        }
 
+        // ── Edit command ──────────────────────────────────────────────────────
+        if actionType == .deleteTask || actionType == .rescheduleTask || actionType == .appendToTask {
+            let targetDate = parsed.targetTime.flatMap { Self.parseISO8601($0, timeZone: tz) }
+            let newScheduledDate = parsed.newScheduledAt.flatMap { Self.parseISO8601($0, timeZone: tz) }
+
+            let cmd = ParsedCommand(
+                originalText: text,
+                actionType: actionType,
+                title: parsed.title ?? "",
+                notes: nil,
+                startDate: nil,
+                endDate: nil,
+                reminderDate: nil,
+                confidence: parsed.confidence,
+                parserSource: .llm,
+                languageCode: parsed.languageCode,
+                targetDate: targetDate,
+                newScheduledDate: newScheduledDate,
+                appendText: parsed.appendText
+            )
+            Self.logFinalParsedCommand(cmd)
+            return cmd
+        }
+
+        // ── Create command ────────────────────────────────────────────────────
         var scheduledDate: Date?
         if let dateString = parsed.scheduledAt {
             let trimmed = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                scheduledDate = nil
-            } else {
-                scheduledDate = Self.parseISO8601(dateString, timeZone: tz)
+            if !trimmed.isEmpty {
+                scheduledDate = Self.parseISO8601(trimmed, timeZone: tz)
                 if scheduledDate == nil {
-                    Self.log.warning("[LLM] scheduled_at returned but could not parse Date raw=\(dateString, privacy: .public)")
+                    Self.log.warning("[LLM] scheduled_at unparseable raw=\(dateString, privacy: .public)")
                 }
             }
         }
@@ -128,19 +186,12 @@ struct LLMTaskParserService: TaskParsing {
         var endDate: Date?
         if let dateString = parsed.endAt {
             let trimmed = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                endDate = nil
-            } else {
-                endDate = Self.parseISO8601(dateString, timeZone: tz)
+            if !trimmed.isEmpty {
+                endDate = Self.parseISO8601(trimmed, timeZone: tz)
                 if endDate == nil {
-                    Self.log.warning("[LLM] end_at returned but could not parse Date raw=\(dateString, privacy: .public)")
+                    Self.log.warning("[LLM] end_at unparseable raw=\(dateString, privacy: .public)")
                 }
             }
-        }
-
-        let (actionType, actionTypeUnmapped) = Self.mapLLMActionType(parsed.actionType)
-        if actionTypeUnmapped {
-            Self.log.warning("[LLM] action_type returned but did not map to ActionType raw=\(parsed.actionType ?? "nil", privacy: .public)")
         }
 
         let cmd = ParsedCommand(
@@ -160,24 +211,27 @@ struct LLMTaskParserService: TaskParsing {
         return cmd
     }
 
+    // MARK: - Logging helpers
+
     private static func logDecodedLLMResponse(_ p: LLMTaskParseResponse) {
-        let sched = p.scheduledAt ?? "nil"
-        let end = p.endAt ?? "nil"
         log.info("""
-            [LLM] decoded LLMTaskParseResponse title=\(p.title ?? "nil", privacy: .public) notes=\(p.notes ?? "nil", privacy: .public) \
-            action_type=\(p.actionType ?? "nil", privacy: .public) scheduled_at=\(sched, privacy: .public) end_at=\(end, privacy: .public) \
-            has_specific_time=\(String(describing: p.hasSpecificTime), privacy: .public) language_code=\(p.languageCode ?? "nil", privacy: .public) \
-            confidence=\(String(describing: p.confidence), privacy: .public)
+            [LLM] decoded response action_type=\(p.actionType ?? "nil", privacy: .public) \
+            title=\(p.title ?? "nil", privacy: .public) \
+            scheduled_at=\(p.scheduledAt ?? "nil", privacy: .public) \
+            target_time=\(p.targetTime ?? "nil", privacy: .public) \
+            new_scheduled_at=\(p.newScheduledAt ?? "nil", privacy: .public) \
+            append_text=\(p.appendText ?? "nil", privacy: .public)
             """)
     }
 
     private static func logFinalParsedCommand(_ cmd: ParsedCommand) {
         let start = cmd.startDate.map { ISO8601DateFormatter().string(from: $0) } ?? "nil"
         let reminder = cmd.reminderDate.map { ISO8601DateFormatter().string(from: $0) } ?? "nil"
-        log.info("[LLM] final ParsedCommand actionType=\(String(describing: cmd.actionType), privacy: .public) title=\(cmd.title, privacy: .public) startDate=\(start, privacy: .public) reminderDate=\(reminder, privacy: .public) parserSource=\(String(describing: cmd.parserSource), privacy: .public)")
+        let target = cmd.targetDate.map { ISO8601DateFormatter().string(from: $0) } ?? "nil"
+        let newSched = cmd.newScheduledDate.map { ISO8601DateFormatter().string(from: $0) } ?? "nil"
+        log.info("[LLM] final ParsedCommand actionType=\(String(describing: cmd.actionType), privacy: .public) title=\(cmd.title, privacy: .public) startDate=\(start, privacy: .public) reminderDate=\(reminder, privacy: .public) targetDate=\(target, privacy: .public) newScheduledDate=\(newSched, privacy: .public)")
     }
 
-    /// Chunked logging for long strings (os_log may truncate single messages).
     private static func logLongString(prefix: String, text: String, chunkSize: Int = 800) {
         if text.count <= chunkSize {
             log.info("\(prefix, privacy: .public)=\(text, privacy: .public)")
@@ -194,26 +248,26 @@ struct LLMTaskParserService: TaskParsing {
         }
     }
 
-    /// Maps JSON `action_type` values to `ActionType` (tolerates snake_case and casing drift).
-    /// `unmapped` is true when a non-empty raw value could not be mapped (excluding explicit "unknown").
+    // MARK: - Mapping helpers
+
     private static func mapLLMActionType(_ raw: String?) -> (ActionType, unmapped: Bool) {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
             return (.unknown, false)
         }
         let collapsed = raw.replacingOccurrences(of: "_", with: "").lowercased()
         switch collapsed {
-        case "reminder": return (.reminder, false)
-        case "calendarevent": return (.calendarEvent, false)
-        case "unknown": return (.unknown, false)
+        case "reminder":       return (.reminder, false)
+        case "calendarevent":  return (.calendarEvent, false)
+        case "unknown":        return (.unknown, false)
+        case "deletetask":     return (.deleteTask, false)
+        case "rescheduletask": return (.rescheduleTask, false)
+        case "appendtotask":   return (.appendToTask, false)
         default:
-            if let t = ActionType(rawValue: raw) {
-                return (t, false)
-            }
+            if let t = ActionType(rawValue: raw) { return (t, false) }
             return (.unknown, true)
         }
     }
 
-    /// Parses ISO8601 strings from the model: full date-time (with optional fractional seconds) or date-only.
     private static func parseISO8601(_ string: String, timeZone: TimeZone) -> Date? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -235,8 +289,7 @@ struct LLMTaskParserService: TaskParsing {
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        let patterns = ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"]
-        for pattern in patterns {
+        for pattern in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd"] {
             let df = DateFormatter()
             df.calendar = calendar
             df.timeZone = timeZone
