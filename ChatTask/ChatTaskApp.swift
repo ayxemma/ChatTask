@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 @main
-struct VocaTimeApp: App {
+struct ChatTaskApp: App {
     @State private var permissionService = PermissionService()
 
     init() {

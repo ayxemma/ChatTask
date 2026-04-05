@@ -1,5 +1,6 @@
 # Local-only API credentials (never commit)
 VocaTime/Secrets.swift
+ChatTask/Secrets.swift
 
 # Xcode / macOS
 xcuserdata/
