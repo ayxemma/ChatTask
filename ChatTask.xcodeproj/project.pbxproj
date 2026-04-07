@@ -38,6 +38,7 @@
 		A10000000000000000000026 /* MultilingualTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* MultilingualTranscriptionService.swift */; };
 		A10000000000000000000027 /* TranscriptionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* TranscriptionRouter.swift */; };
 		A10000000000000000000028 /* LocalTranscriptEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* LocalTranscriptEvaluator.swift */; };
+		A10000000000000000000029 /* TaskReminderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* TaskReminderService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +73,7 @@
 		A20000000000000000000026 /* MultilingualTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultilingualTranscriptionService.swift; sourceTree = "<group>"; };
 		A20000000000000000000027 /* TranscriptionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionRouter.swift; sourceTree = "<group>"; };
 		A20000000000000000000028 /* LocalTranscriptEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTranscriptEvaluator.swift; sourceTree = "<group>"; };
+		A20000000000000000000029 /* TaskReminderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskReminderService.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* VocaTime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VocaTime.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -166,6 +168,7 @@
 				A20000000000000000000020 /* TaskParsingCoordinator.swift */,
 				A20000000000000000000027 /* TranscriptionRouter.swift */,
 				A20000000000000000000028 /* LocalTranscriptEvaluator.swift */,
+				A20000000000000000000029 /* TaskReminderService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -279,6 +282,7 @@
 				A10000000000000000000026 /* MultilingualTranscriptionService.swift in Sources */,
 				A10000000000000000000027 /* TranscriptionRouter.swift in Sources */,
 				A10000000000000000000028 /* LocalTranscriptEvaluator.swift in Sources */,
+				A10000000000000000000029 /* TaskReminderService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

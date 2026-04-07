@@ -161,6 +161,16 @@ final class PermissionService {
 
     // MARK: - Notifications
 
+    /// Silently requests notification permission on first app launch.
+    /// Does nothing if the user has already made a decision.
+    func requestNotificationsIfNeeded() async {
+        await refreshNotifications()
+        guard notificationStatus == .notDetermined else { return }
+        _ = try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound])
+        await refreshNotifications()
+    }
+
     private func refreshNotifications() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         notificationStatus = mapNotification(settings.authorizationStatus)

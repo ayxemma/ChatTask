@@ -567,6 +567,7 @@ final class VoiceCommandViewModel {
         pendingDeleteTask = nil
         Self.log.info("[VoiceChat] deleteConfirmed title=\(title, privacy: .public)")
         if let ctx = persistenceContext {
+            TaskReminderService.shared.cancel(taskID: task.id)
             ctx.delete(task)
             try? ctx.save()
         }

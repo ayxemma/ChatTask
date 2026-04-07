@@ -13,6 +13,10 @@ struct ChatTaskApp: App {
         WindowGroup {
             AppShellView()
                 .environment(permissionService)
+                .task {
+                    // Request notification permission on first launch (no-op if already decided).
+                    await permissionService.requestNotificationsIfNeeded()
+                }
         }
         .modelContainer(for: TaskItem.self)
     }

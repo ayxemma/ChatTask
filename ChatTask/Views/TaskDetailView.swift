@@ -91,6 +91,7 @@ struct TaskDetailView: View {
 
             Section {
                 Button(role: .destructive) {
+                    TaskReminderService.shared.cancel(taskID: task.id)
                     modelContext.delete(task)
                     try? modelContext.save()
                     dismiss()
@@ -134,6 +135,11 @@ struct TaskDetailView: View {
                 task.isCompleted = new
                 task.completedAt = new ? Date() : nil
                 task.updatedAt = Date()
+                if new {
+                    TaskReminderService.shared.cancel(taskID: task.id)
+                } else {
+                    TaskReminderService.shared.schedule(for: task)
+                }
             }
         )
     }
@@ -142,6 +148,7 @@ struct TaskDetailView: View {
         guard scheduleEnabled else {
             task.scheduledDate = nil
             task.updatedAt = Date()
+            TaskReminderService.shared.cancel(taskID: task.id)
             return
         }
         task.scheduledDate = TaskScheduleHelpers.scheduledDate(
@@ -152,6 +159,7 @@ struct TaskDetailView: View {
             timeSelection: timeSelection
         )
         task.updatedAt = Date()
+        TaskReminderService.shared.schedule(for: task)
     }
 }
 

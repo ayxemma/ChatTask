@@ -83,5 +83,6 @@ final class TaskItem {
         )
         context.insert(item)
         try? context.save()
+        TaskReminderService.shared.schedule(for: item)
     }
 }

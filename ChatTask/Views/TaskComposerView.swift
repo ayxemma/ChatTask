@@ -203,6 +203,7 @@ struct TaskComposerView: View {
         )
         modelContext.insert(item)
         try? modelContext.save()
+        TaskReminderService.shared.schedule(for: item)
         dismiss()
     }
 }
