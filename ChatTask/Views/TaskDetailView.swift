@@ -14,6 +14,7 @@ struct TaskDetailView: View {
     @State private var daySelection: Date
     @State private var specificTimeEnabled: Bool
     @State private var timeSelection: Date
+    @State private var reminderOffset: ReminderOffset
 
     private var calendar: Calendar { .current }
 
@@ -33,6 +34,8 @@ struct TaskDetailView: View {
             _specificTimeEnabled = State(initialValue: false)
             _timeSelection = State(initialValue: Date())
         }
+        let offsetMinutes = task.reminderOffsetMinutes ?? ReminderOffset.globalDefault.rawValue
+        _reminderOffset = State(initialValue: ReminderOffset.nearest(to: offsetMinutes))
     }
 
     var body: some View {
@@ -77,6 +80,17 @@ struct TaskDetailView: View {
                             .onChange(of: timeSelection) { _, _ in
                                 flushScheduleToTask()
                             }
+
+                        Picker(s.reminderLabel, selection: $reminderOffset) {
+                            ForEach(ReminderOffset.allCases) { option in
+                                Text(option.displayLabel).tag(option)
+                            }
+                        }
+                        .onChange(of: reminderOffset) { _, new in
+                            task.reminderOffsetMinutes = new.rawValue
+                            task.updatedAt = Date()
+                            TaskReminderService.shared.schedule(for: task)
+                        }
                     }
                 }
 
@@ -147,6 +161,7 @@ struct TaskDetailView: View {
     private func flushScheduleToTask() {
         guard scheduleEnabled else {
             task.scheduledDate = nil
+            task.reminderOffsetMinutes = nil
             task.updatedAt = Date()
             TaskReminderService.shared.cancel(taskID: task.id)
             return
@@ -158,6 +173,7 @@ struct TaskDetailView: View {
             hasSpecificTime: specificTimeEnabled,
             timeSelection: timeSelection
         )
+        task.reminderOffsetMinutes = specificTimeEnabled ? reminderOffset.rawValue : nil
         task.updatedAt = Date()
         TaskReminderService.shared.schedule(for: task)
     }

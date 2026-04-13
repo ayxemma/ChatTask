@@ -4,12 +4,15 @@ import UserNotifications
 /// Schedules, updates, and cancels local notifications for task reminders.
 ///
 /// - Call `schedule(for:)` when a task is created or edited.
-///   It always cancels any existing pending notification for that task first,
-///   so it doubles as an update.
+///   It always cancels any existing pending notification first, acting as an upsert.
 /// - Call `cancel(taskID:)` when a task is deleted or marked complete.
 ///
 /// Only tasks with a future, wall-clock-specific `scheduledDate` receive a notification.
 /// Date-only tasks (midnight, no specific time) are intentionally skipped.
+///
+/// Lead time: the notification fires `reminderOffsetMinutes` before the task's
+/// scheduled time. The offset is read from `task.reminderOffsetMinutes` if set,
+/// otherwise from the global default (`ReminderOffset.globalDefault`).
 struct TaskReminderService {
     static let shared = TaskReminderService()
     private init() {}
@@ -20,25 +23,27 @@ struct TaskReminderService {
 
     func schedule(for task: TaskItem) {
         let identifier = task.id.uuidString
-        // Cancel any existing pending notification — this makes schedule() work as an upsert.
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
 
         guard
             !task.isCompleted,
-            let date = task.scheduledDate,
-            date > Date(),
-            hasWallClockTime(date)
+            let scheduledDate = task.scheduledDate,
+            hasWallClockTime(scheduledDate)
         else { return }
+
+        let offsetMinutes = task.reminderOffsetMinutes ?? ReminderOffset.globalDefault.rawValue
+        let fireDate = scheduledDate.addingTimeInterval(-Double(offsetMinutes) * 60)
+
+        guard fireDate > Date() else { return }
 
         let content = UNMutableNotificationContent()
         content.title = task.title
-        content.body = formattedBody(for: date)
+        content.body  = formattedBody(scheduledDate: scheduledDate, offsetMinutes: offsetMinutes)
         content.sound = .default
 
-        // Fire at the exact calendar date+time of the task.
         let comps = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute],
-            from: date
+            from: fireDate
         )
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
         let request  = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
@@ -52,8 +57,6 @@ struct TaskReminderService {
 
     // MARK: - Helpers
 
-    /// Returns true only if the date carries a meaningful wall-clock time
-    /// (i.e. is not midnight / date-only).
     private func hasWallClockTime(_ date: Date) -> Bool {
         let cal = Calendar.current
         return !(
@@ -63,13 +66,19 @@ struct TaskReminderService {
         )
     }
 
-    /// Builds the notification body, e.g. "Now · 5:15 PM".
-    /// Uses the device locale for time formatting so the clock matches
-    /// whatever the user's system is set to.
-    private func formattedBody(for date: Date) -> String {
+    /// Builds the notification body.
+    /// - 0 min offset → "Now · 5:15 PM"
+    /// - N min offset → "In N min · 5:15 PM"  (or "In 1 hr · 5:15 PM" for 60)
+    private func formattedBody(scheduledDate: Date, offsetMinutes: Int) -> String {
         let f = DateFormatter()
         f.timeStyle = .short
         f.dateStyle = .none
-        return "Now · \(f.string(from: date))"
+        let timeString = f.string(from: scheduledDate)
+
+        switch offsetMinutes {
+        case 0:           return "Now · \(timeString)"
+        case 60:          return "In 1 hr · \(timeString)"
+        default:          return "In \(offsetMinutes) min · \(timeString)"
+        }
     }
 }

@@ -25,6 +25,8 @@ final class TaskItem {
     var updatedAt: Date
     var sourceRaw: String
     var kindRaw: String
+    /// Per-task reminder lead time in minutes. `nil` means use the global default.
+    var reminderOffsetMinutes: Int?
 
     var kind: TaskKind {
         TaskKind(rawValue: kindRaw) ?? .task
@@ -45,7 +47,8 @@ final class TaskItem {
         createdAt: Date = .now,
         updatedAt: Date = .now,
         source: TaskSource = .voice,
-        kind: TaskKind = .task
+        kind: TaskKind = .task,
+        reminderOffsetMinutes: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -58,6 +61,7 @@ final class TaskItem {
         self.updatedAt = updatedAt
         self.sourceRaw = source.rawValue
         self.kindRaw = kind.rawValue
+        self.reminderOffsetMinutes = reminderOffsetMinutes
     }
 
     @MainActor
@@ -79,7 +83,8 @@ final class TaskItem {
             createdAt: now,
             updatedAt: now,
             source: .voice,
-            kind: kind
+            kind: kind,
+            reminderOffsetMinutes: ReminderOffset.globalDefault.rawValue
         )
         context.insert(item)
         try? context.save()

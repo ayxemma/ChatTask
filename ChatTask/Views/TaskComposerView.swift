@@ -15,6 +15,7 @@ struct TaskComposerView: View {
     @State private var hasSpecificTime = false
     @State private var timeSelection = Date()
     @State private var showTimePicker = false
+    @State private var reminderOffset: ReminderOffset = .atTime
 
     @FocusState private var titleFocused: Bool
 
@@ -108,6 +109,15 @@ struct TaskComposerView: View {
                                 .labelsHidden()
                                 .environment(\.locale, locale)
                                 .padding(.vertical, 4)
+
+                                Divider()
+                                    .padding(.vertical, 2)
+
+                                Picker(s.reminderLabel, selection: $reminderOffset) {
+                                    ForEach(ReminderOffset.allCases) { option in
+                                        Text(option.displayLabel).tag(option)
+                                    }
+                                }
                             }
                         }
                     }
@@ -137,6 +147,7 @@ struct TaskComposerView: View {
         }
         .onAppear {
             titleFocused = true
+            reminderOffset = ReminderOffset.globalDefault
         }
     }
 
@@ -199,7 +210,8 @@ struct TaskComposerView: View {
             createdAt: now,
             updatedAt: now,
             source: .manual,
-            kind: .task
+            kind: .task,
+            reminderOffsetMinutes: hasSpecificTime ? reminderOffset.rawValue : nil
         )
         modelContext.insert(item)
         try? modelContext.save()
