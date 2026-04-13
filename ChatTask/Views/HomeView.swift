@@ -79,6 +79,20 @@ private struct SectionDropDelegate: DropDelegate {
     }
 }
 
+// MARK: - ComposerSession
+
+/// A fresh token created each time the new-task composer is opened.
+/// Giving the sheet a new `Identifiable` item on every presentation forces
+/// SwiftUI to destroy and recreate `TaskComposerView` from scratch, guaranteeing
+/// that no @State from a previous session survives into the new one.
+struct ComposerSession: Identifiable {
+    let id: UUID
+    init() {
+        id = UUID()
+        print("[ComposerSession] New session created — id=\(id)")
+    }
+}
+
 // MARK: - HomeView
 
 struct HomeView: View {
@@ -89,9 +103,9 @@ struct HomeView: View {
     @AppStorage(homeSectionOrderKey) private var sectionOrderRaw: String = homeSectionOrderDefault
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
-    @State private var viewModel       = VoiceCommandViewModel()
-    @State private var showChat        = false
-    @State private var showTaskComposer = false
+    @State private var viewModel        = VoiceCommandViewModel()
+    @State private var showChat         = false
+    @State private var composerSession: ComposerSession?   // replaces showTaskComposer: Bool
 
     // Per-section expansion state
     @State private var isTodayExpanded    = true
@@ -200,9 +214,9 @@ struct HomeView: View {
             ChatSheetView(viewModel: viewModel)
                 .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showTaskComposer) {
+        .sheet(item: $composerSession) { session in
             NavigationStack {
-                TaskComposerView()
+                TaskComposerView(sessionID: session.id)
             }
             .presentationDragIndicator(.visible)
         }
@@ -217,7 +231,7 @@ struct HomeView: View {
                 .accessibilityLabel(strings.settingsNavigationTitle)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button { showTaskComposer = true } label: {
+                Button { composerSession = ComposerSession() } label: {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel(s.newTaskA11y)

@@ -2,14 +2,20 @@ import SwiftData
 import SwiftUI
 
 struct TaskComposerView: View {
+    /// Unique identifier for this composer session, passed from HomeView.
+    /// Stored as a `let` so it is baked into the view's identity via `.sheet(item:)`,
+    /// guaranteeing a completely fresh instance — and fresh @State — on every open.
+    let sessionID: UUID
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
     @Environment(\.appUILanguage) private var appUILanguage
 
     // All @State properties start at their defaults.
-    // onAppear resets them explicitly on every presentation so SwiftUI's state
-    // preservation across sheet presentations never leaks old values into a new task.
+    // onAppear also resets them as a secondary defence, but the primary guarantee
+    // comes from each presentation receiving a unique sessionID via .sheet(item:),
+    // which forces SwiftUI to destroy and recreate the view (and its @State) entirely.
     @State private var title = ""
     @State private var notes = ""
     @State private var hasDate = false
@@ -148,11 +154,9 @@ struct TaskComposerView: View {
             }
         }
         .onAppear {
-            // FIX: Reset all local state on every appearance.
-            // SwiftUI can preserve @State across sheet presentations (same view
-            // identity in the hierarchy). Without this reset, values from a previous
-            // task creation — especially hasSpecificTime and timeSelection — carry
-            // into the new task and corrupt its scheduledDate and reminder.
+            // Primary guarantee: each presentation has a unique sessionID injected by
+            // HomeView via .sheet(item:), so SwiftUI creates a brand-new view instance.
+            // This reset is a secondary defence in case of any edge-case re-appearance.
             title = ""
             notes = ""
             hasDate = false
@@ -165,7 +169,7 @@ struct TaskComposerView: View {
             titleFocused = true
 
             print("""
-            [TaskComposer] Opened — state reset to clean defaults.
+            [TaskComposer] Appeared — session=\(sessionID)
               hasDate=\(hasDate)  hasSpecificTime=\(hasSpecificTime)
               daySelection=\(daySelection)  timeSelection=\(timeSelection)
               reminderOffset=\(reminderOffset.displayLabel)
@@ -220,7 +224,7 @@ struct TaskComposerView: View {
 
     private func save() {
         print("""
-        [TaskComposer] Saving task —
+        [TaskComposer] Saving task — session=\(sessionID)
           title='\(trimmedTitle)'
           hasDate=\(hasDate)  daySelection=\(daySelection)
           hasSpecificTime=\(hasSpecificTime)  timeSelection=\(timeSelection)
@@ -253,7 +257,7 @@ struct TaskComposerView: View {
         try? modelContext.save()
 
         print("""
-        [TaskComposer] Task inserted —
+        [TaskComposer] Task inserted — session=\(sessionID)
           id=\(item.id)
           title='\(item.title)'
           scheduledDate=\(String(describing: item.scheduledDate))
@@ -267,7 +271,7 @@ struct TaskComposerView: View {
 
 #Preview {
     NavigationStack {
-        TaskComposerView()
+        TaskComposerView(sessionID: UUID())
             .environment(\.appUILanguage, .en)
             .environment(\.locale, Locale(identifier: "en_US"))
     }

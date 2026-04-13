@@ -8,7 +8,7 @@ struct CalendarView: View {
 
     @State private var displayedMonth: Date
     @State private var selectedDate: Date
-    @State private var showTaskComposer = false
+    @State private var composerSession: ComposerSession?
 
     private var calendar: Calendar {
         var cal = Calendar.current
@@ -55,16 +55,16 @@ struct CalendarView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showTaskComposer = true
+                    composerSession = ComposerSession()
                 } label: {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel(s.newTaskA11y)
             }
         }
-        .sheet(isPresented: $showTaskComposer) {
+        .sheet(item: $composerSession) { session in
             NavigationStack {
-                TaskComposerView()
+                TaskComposerView(sessionID: session.id)
             }
             .presentationDragIndicator(.visible)
         }
