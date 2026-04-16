@@ -788,29 +788,56 @@ final class VoiceCommandViewModel {
         let low = userTranscript.lowercased()
         if command.actionType == .reminder {
             if let n = extractLeadingMinutes(from: low) {
-                return n == 1
-                    ? String(format: s.chatReminderMinutes, n)
-                    : String(format: s.chatReminderMinutesPlural, n)
+                let base = n == 1
+                    ? String(format: s.chatReminderMinutes, n, command.title)
+                    : String(format: s.chatReminderMinutesPlural, n, command.title)
+                return appendAlsoNotedIfNeeded(base, notes: command.notes)
             }
             if let n = extractLeadingHours(from: low) {
-                return n == 1
-                    ? String(format: s.chatReminderHours, n)
-                    : String(format: s.chatReminderHoursPlural, n)
+                let base = n == 1
+                    ? String(format: s.chatReminderHours, n, command.title)
+                    : String(format: s.chatReminderHoursPlural, n, command.title)
+                return appendAlsoNotedIfNeeded(base, notes: command.notes)
             }
             if let when = command.reminderDate {
                 let t = replyDateFormatter.string(from: when)
-                return String(format: s.chatReminderAt, t, command.title)
+                let base = String(format: s.chatReminderAt, t, command.title)
+                return appendAlsoNotedIfNeeded(base, notes: command.notes)
             }
-            return String(format: s.chatReminderAbout, command.title)
+            let base = String(format: s.chatReminderAbout, command.title)
+            return appendAlsoNotedIfNeeded(base, notes: command.notes)
         }
         if command.actionType == .calendarEvent {
             if let when = command.startDate {
                 let t = replyDateFormatter.string(from: when)
-                return String(format: s.chatEventAt, command.title, t)
+                let base = String(format: s.chatEventAt, command.title, t)
+                return appendAlsoNotedIfNeeded(base, notes: command.notes)
             }
-            return String(format: s.chatEventCalendar, command.title)
+            let base = String(format: s.chatEventCalendar, command.title)
+            return appendAlsoNotedIfNeeded(base, notes: command.notes)
         }
         return s.chatTryRemind
+    }
+
+    /// Appends a second sentence when `notes` is non-empty; does not repeat the title.
+    private func appendAlsoNotedIfNeeded(_ base: String, notes: String?) -> String {
+        let s = uiLanguage.strings
+        guard let snippet = truncatedNotesForConfirmation(notes) else { return base }
+        return base + " " + String(format: s.chatAlsoNoted, snippet)
+    }
+
+    /// Truncates long notes; trims trailing sentence punctuation to avoid awkward doubling before `chatAlsoNoted`.
+    private func truncatedNotesForConfirmation(_ notes: String?, maxLen: Int = 120) -> String? {
+        guard var n = notes?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return nil }
+        while let last = n.last, ".。!！?？".contains(last) {
+            n.removeLast()
+        }
+        guard !n.isEmpty else { return nil }
+        guard n.count > maxLen else { return n }
+        let end = n.index(n.startIndex, offsetBy: maxLen)
+        var s = String(n[..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = s.last, ".。!！?？".contains(last) { s.removeLast() }
+        return s + "…"
     }
 
     private var replyDateFormatter: DateFormatter {
