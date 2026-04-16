@@ -5,13 +5,9 @@ import SwiftUI
 private enum DraggableChatButtonMetrics {
     static let size: CGFloat = 56
     static let edgeMargin: CGFloat = 16
-    /// Extra space above tab bar / home indicator + typical tab height so the FAB
-    /// stays clear of the last task rows and the tab bar.
-    static let bottomClearance: CGFloat = 32
-    /// When the FAB’s vertical position is within this fraction of the draggable
-    /// band measured from the bottom, nudge it slightly upward after release.
-    static let bottomSoftZoneStart: CGFloat = 0.68
-    static let bottomSoftZoneNudge: CGFloat = 32
+    /// Small gap above the home indicator / bottom safe inset (8–16 pt range; keeps the
+    /// circle fully visible without a large artificial “danger zone”).
+    static let bottomSafeMargin: CGFloat = 12
     /// Movement at or below this distance (points) counts as a tap, not a drag.
     static let tapDistanceThreshold: CGFloat = 12
 }
@@ -32,6 +28,9 @@ struct DraggableChatButton: View {
 
     @State private var dragTranslation: CGSize = .zero
     @State private var isDragging = false
+    #if DEBUG
+    @State private var didLogInitialLayout = false
+    #endif
 
     var body: some View {
         GeometryReader { geo in
@@ -42,7 +41,7 @@ struct DraggableChatButton: View {
                     x: base.x + dragTranslation.width,
                     y: base.y + dragTranslation.height
                 )
-                let clampedDrag = clampToSafeBand(rawEnd, layout: layout, dragging: true)
+                let clampedDrag = clampToSafeBand(rawEnd, layout: layout)
                 let dragOffset = CGSize(
                     width: clampedDrag.x - base.x,
                     height: clampedDrag.y - base.y
@@ -97,12 +96,15 @@ struct DraggableChatButton: View {
                                     )
                                     let midX = (layoutNow.minCenterX + layoutNow.maxCenterX) / 2
                                     let snappedX = endRaw.x < midX ? layoutNow.minCenterX : layoutNow.maxCenterX
-                                    let snappedY = softClampY(endRaw.y, layout: layoutNow, dragging: false)
+                                    let snappedY = min(max(endRaw.y, layoutNow.minCenterY), layoutNow.maxCenterY)
                                     let snapped = CGPoint(x: snappedX, y: snappedY)
                                     let denomX = max(layoutNow.maxCenterX - layoutNow.minCenterX, 1)
                                     let denomY = max(layoutNow.maxCenterY - layoutNow.minCenterY, 1)
                                     let nx = (snapped.x - layoutNow.minCenterX) / denomX
                                     let ny = (snapped.y - layoutNow.minCenterY) / denomY
+                                    #if DEBUG
+                                    logLayoutDebug(geo: geo, layout: layoutNow, phase: "drop", droppedCenterY: snapped.y)
+                                    #endif
                                     withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
                                         storedRelX = Double(nx)
                                         storedRelY = Double(ny)
@@ -110,11 +112,37 @@ struct DraggableChatButton: View {
                                 }
                         )
                 }
+                #if DEBUG
+                .onAppear {
+                    guard !didLogInitialLayout else { return }
+                    didLogInitialLayout = true
+                    logLayoutDebug(geo: geo, layout: layout, phase: "initial", droppedCenterY: nil)
+                }
+                #endif
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(true)
     }
+
+    #if DEBUG
+    private func logLayoutDebug(geo: GeometryProxy, layout: SafeBand, phase: String, droppedCenterY: CGFloat?) {
+        let half = DraggableChatButtonMetrics.size / 2
+        let safe = geo.safeAreaInsets
+        var message = """
+        [DraggableChatButton] \(phase)
+          container: \(geo.size.width) x \(geo.size.height)
+          safeArea.top=\(safe.top) safeArea.bottom=\(safe.bottom) leading=\(safe.leading) trailing=\(safe.trailing)
+          buttonSize=\(DraggableChatButtonMetrics.size)
+          minCenterY=\(layout.minCenterY) maxCenterY=\(layout.maxCenterY)
+          minButtonTopY=\(layout.minCenterY - half) maxButtonBottomY=\(layout.maxCenterY + half)
+        """
+        if let y = droppedCenterY {
+            message += "\n  droppedCenterY=\(y) droppedButtonBottomY=\(y + half)"
+        }
+        print(message)
+    }
+    #endif
 
     // MARK: - Layout
 
@@ -136,7 +164,8 @@ struct DraggableChatButton: View {
         let minCX = half + m + safe.leading
         let maxCX = w - half - m - safe.trailing
         let minCY = half + m + safe.top
-        let maxCY = h - half - m - safe.bottom - DraggableChatButtonMetrics.bottomClearance
+        // Bottom: h − safeBottom − smallMargin − radius (no extra tab-bar “danger zone”).
+        let maxCY = h - half - safe.bottom - DraggableChatButtonMetrics.bottomSafeMargin
         return SafeBand(minCenterX: minCX, maxCenterX: maxCX, minCenterY: minCY, maxCenterY: maxCY)
     }
 
@@ -148,21 +177,10 @@ struct DraggableChatButton: View {
         return CGPoint(x: x, y: y)
     }
 
-    private func clampToSafeBand(_ p: CGPoint, layout band: SafeBand, dragging: Bool) -> CGPoint {
+    private func clampToSafeBand(_ p: CGPoint, layout band: SafeBand) -> CGPoint {
         let x = min(max(p.x, band.minCenterX), band.maxCenterX)
-        let y = softClampY(p.y, layout: band, dragging: dragging)
+        let y = min(max(p.y, band.minCenterY), band.maxCenterY)
         return CGPoint(x: x, y: y)
-    }
-
-    private func softClampY(_ y: CGFloat, layout band: SafeBand, dragging: Bool) -> CGFloat {
-        var y2 = min(max(y, band.minCenterY), band.maxCenterY)
-        let span = band.maxCenterY - band.minCenterY
-        guard span > 0 else { return y2 }
-        let fromBottom = (y2 - band.minCenterY) / span
-        if fromBottom >= DraggableChatButtonMetrics.bottomSoftZoneStart {
-            y2 = min(y2, band.maxCenterY - (dragging ? 0 : DraggableChatButtonMetrics.bottomSoftZoneNudge))
-        }
-        return y2
     }
 }
 

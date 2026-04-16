@@ -102,8 +102,6 @@ struct HomeView: View {
     @AppStorage(homeSectionOrderKey) private var sectionOrderRaw: String = homeSectionOrderDefault
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
-    @State private var viewModel        = VoiceCommandViewModel()
-    @State private var showChat         = false
     @State private var composerSession: ComposerSession?   // replaces showTaskComposer: Bool
 
     // Per-section expansion state
@@ -184,15 +182,6 @@ struct HomeView: View {
                 .padding(.bottom, 36)
             }
             .background(Color(.systemGroupedBackground))
-
-            DraggableChatButton(
-                onTap: { showChat = true },
-                accessibilityLabel: s.openCommandChat
-            )
-        }
-        .sheet(isPresented: $showChat) {
-            ChatSheetView(viewModel: viewModel)
-                .presentationDragIndicator(.visible)
         }
         .sheet(item: $composerSession) { session in
             NavigationStack {
@@ -216,13 +205,6 @@ struct HomeView: View {
                 }
                 .accessibilityLabel(s.newTaskA11y)
             }
-        }
-        .onAppear {
-            viewModel.uiLanguage = selectedUILanguage
-        }
-        .onChange(of: languageRaw) { _, _ in
-            viewModel.uiLanguage = selectedUILanguage
-            Task { await viewModel.handleUILanguageChanged() }
         }
     }
 
