@@ -15,78 +15,69 @@ struct LLMTaskParserService: TaskParsing {
     private let endpoint = "https://api.openai.com/v1/chat/completions"
     private let model = "gpt-4o-mini"
 
+    /// Static instructions only — date/time and user text are sent in the user message.
+    private static let systemPrompt = """
+    You are a multilingual task parser.
+    Return ONLY valid JSON.
+
+    Supported action_type:
+    - reminder
+    - calendarEvent
+    - deleteTask
+    - rescheduleTask
+    - appendToTask
+    - unknown
+
+    Rules:
+    - Extract a task from natural language (any language or mixed language).
+    - Keep a concise, natural phrase as the title.
+    - Only use notes if there is clearly extra supporting detail that would make the title too long.
+    - Prefer keeping more content in title rather than splitting incorrectly.
+    - If unsure, set notes = null.
+
+    Time handling:
+    - For new tasks: use scheduled_at (and end_at if applicable).
+    - For edits:
+      - target_time = original task time
+      - new_scheduled_at = updated time
+    - has_specific_time = true only if an exact time is clearly specified.
+
+    Other fields:
+    - append_text only for appendToTask
+    - language_code should reflect the input language
+    - confidence is a number between 0 and 1
+
+    Title/notes examples (omit other keys in your reply; include all schema fields in actual output):
+    "Call the doctor at 3 about Ari's vaccine records" → title: Call the doctor about Ari's vaccine records, notes: null
+    "Remind me tomorrow at 5 to call the doctor about Ari's vaccine records and also ask whether the follow-up appointment should be next week" → title: Call the doctor about Ari's vaccine records, notes: Also ask whether the follow-up appointment should be next week
+    "明天下午五点提醒我给医生打电话问Ari的疫苗记录，然后顺便确认下周要不要复诊" → title: 给医生打电话问Ari的疫苗记录, notes: 确认下周要不要复诊
+
+    Return JSON with fields:
+    title, notes, action_type, scheduled_at, end_at, has_specific_time, language_code, confidence, target_time, new_scheduled_at, append_text
+    """
+
     func parse(text: String, now: Date, localeIdentifier: String, timeZoneIdentifier: String) async throws -> ParsedCommand {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
         let nowString = formatter.string(from: now)
 
-        let systemPrompt = """
-        You are a highly capable multilingual task assistant.
-        The user speaks commands in English, Chinese, Spanish, or a mixture.
-        Understand the intent, and return ONLY a valid JSON object — no markdown, no extra text.
-
+        let userMessage = """
         Current Date/Time: \(nowString)
         Timezone: \(timeZoneIdentifier)
 
-        Determine the action_type:
-        - "reminder"      — create a reminder task ("remind me to…", "remember to…")
-        - "calendarEvent" — create a calendar/timed event
-        - "unknown"       — create a task but time/type is unclear
-        - "deleteTask"    — user wants to delete or cancel an existing task
-        - "rescheduleTask"— user wants to move/change the time of an existing task
-        - "appendToTask"  — user wants to add extra text/note to an existing task
-
-        For CREATE commands (reminder / calendarEvent / unknown):
-          - "title": the core task phrase, concise and natural. Strip filler like "remind me to" / "don't forget to". If the sentence is already short, put everything here.
-          - "notes": ONLY populate when there is clearly extra supporting detail that would make the title too long or cluttered — otherwise null. Common triggers: "and also", "also", "顺便", "另外", multiple separate actions, or a long secondary clause.
-          - "scheduled_at": ISO8601 datetime if a time is given, else null
-          - "end_at": ISO8601 end time if given, else null
-          - "has_specific_time": true if a clock time is mentioned
-          - "target_time": null
-          - "new_scheduled_at": null
-          - "append_text": null
-
-        Title/notes examples:
-          "Call the doctor at 3 about Ari's vaccine records"
-          → {"title":"Call the doctor about Ari's vaccine records","notes":null}
-
-          "Remind me tomorrow at 5 to call the doctor about Ari's vaccine records and also ask whether the follow-up appointment should be next week"
-          → {"title":"Call the doctor about Ari's vaccine records","notes":"Also ask whether the follow-up appointment should be next week"}
-
-          "明天下午五点提醒我给医生打电话问Ari的疫苗记录，然后顺便确认下周要不要复诊"
-          → {"title":"给医生打电话问Ari的疫苗记录","notes":"确认下周要不要复诊"}
-
-        For EDIT commands (deleteTask / rescheduleTask / appendToTask):
-          - "title": null (or the task title if the user mentions it by name)
-          - "notes": null
-          - "scheduled_at": null
-          - "end_at": null
-          - "has_specific_time": false
-          - "target_time": ISO8601 datetime of the EXISTING task the user is referring to (required for all edit commands)
-          - "new_scheduled_at": ISO8601 datetime of the new time (rescheduleTask only, else null)
-          - "append_text": the text to add to the task (appendToTask only, else null)
-
-        JSON schema:
-        {
-          "title": string | null,
-          "notes": string | null,
-          "action_type": "reminder" | "calendarEvent" | "unknown" | "deleteTask" | "rescheduleTask" | "appendToTask",
-          "scheduled_at": string | null,
-          "end_at": string | null,
-          "has_specific_time": boolean,
-          "language_code": "en" | "zh" | "es" | "mixed",
-          "confidence": number,
-          "target_time": string | null,
-          "new_scheduled_at": string | null,
-          "append_text": string | null
-        }
+        User input:
+        \(text)
         """
+
+        print("=== LLM REQUEST DEBUG ===")
+        print("SYSTEM PROMPT:\n\(Self.systemPrompt)")
+        print("USER MESSAGE:\n\(userMessage)")
 
         let requestBody: [String: Any] = [
             "model": model,
             "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": text]
+                ["role": "system", "content": Self.systemPrompt],
+                ["role": "user", "content": userMessage]
             ],
             "response_format": ["type": "json_object"],
             "temperature": 0.0
