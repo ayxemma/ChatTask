@@ -15,6 +15,8 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
     case ptBR = "pt-BR"
     case it = "it"
     case nl = "nl"
+    /// Hindi UI option; strings fall back to English until localized copy exists.
+    case hi = "hi"
 
     var id: String { rawValue }
 
@@ -32,6 +34,7 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         case .ptBR: return "Português (Brasil)"
         case .it: return "Italiano"
         case .nl: return "Nederlands"
+        case .hi: return "Hindi (हिन्दी)"
         }
     }
 
@@ -50,6 +53,7 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         case .ptBR: return Locale(identifier: "pt_BR")
         case .it: return Locale(identifier: "it_IT")
         case .nl: return Locale(identifier: "nl_NL")
+        case .hi: return Locale(identifier: "hi_IN")
         }
     }
 
@@ -75,6 +79,7 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         if primary.hasPrefix("de") { return .de }
         if primary.hasPrefix("it") { return .it }
         if primary.hasPrefix("nl") { return .nl }
+        if primary.hasPrefix("hi") { return .hi }
         if primary.hasPrefix("es") { return .es }
         return .en
     }
@@ -103,6 +108,7 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         case .ptBR: return .portugueseBrazil
         case .it: return .italian
         case .nl: return .dutch
+        case .hi: return .english
         }
     }
 
@@ -119,6 +125,7 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         case .ptBR: return .portugueseBrazil
         case .it: return .italian
         case .nl: return .dutch
+        case .hi: return .english
         }
     }
 }
