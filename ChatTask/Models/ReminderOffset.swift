@@ -23,6 +23,17 @@ enum ReminderOffset: Int, CaseIterable, Identifiable {
         }
     }
 
+    /// Localized labels for Settings (uses `AppStrings` / app UI language).
+    func localizedLabel(strings: AppStrings) -> String {
+        switch self {
+        case .atTime:     return strings.reminderOffsetAtTime
+        case .fiveMin:    return strings.reminderOffset5Min
+        case .fifteenMin: return strings.reminderOffset15Min
+        case .thirtyMin:  return strings.reminderOffset30Min
+        case .oneHour:    return strings.reminderOffset1Hour
+        }
+    }
+
     /// Returns the UserDefaults key used to persist the global default.
     static let defaultsKey = "reminderDefaultMinutes"
 

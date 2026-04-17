@@ -62,7 +62,7 @@ struct SettingsView: View {
             Section {
                 Picker(selection: selectedReminderOffset) {
                     ForEach(ReminderOffset.allCases) { option in
-                        Text(option.displayLabel).tag(option)
+                        Text(option.localizedLabel(strings: s)).tag(option)
                     }
                 } label: {
                     Text(s.reminderDefaultLabel)
@@ -180,6 +180,8 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+                .environment(\.appUILanguage, appUILanguage)
+                .environment(\.locale, appUILanguage.locale)
         }
         .task {
             await permissionService.refreshAll()

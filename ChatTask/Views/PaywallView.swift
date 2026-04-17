@@ -13,6 +13,7 @@ enum SubscriptionPlan: String, CaseIterable, Identifiable {
 
 struct PaywallView: View {
     @Environment(SubscriptionManager.self) private var subscriptionManager
+    @Environment(\.appUILanguage) private var appUILanguage
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedPlan: SubscriptionPlan = .yearly
@@ -24,6 +25,8 @@ struct PaywallView: View {
     private var isPurchasing: Bool { subscriptionManager.purchaseState == .purchasing }
     private var isRestoring: Bool  { subscriptionManager.purchaseState == .restoring }
     private var isIdle: Bool       { subscriptionManager.purchaseState == .idle }
+
+    private var strings: AppStrings { appUILanguage.strings }
 
     private var selectedProduct: Product? {
         selectedPlan == .monthly
@@ -129,7 +132,8 @@ struct PaywallView: View {
     // MARK: - Trial banner
 
     private var trialBanner: some View {
-        HStack(spacing: 14) {
+        let s = strings
+        return HStack(spacing: 14) {
             Image(systemName: "gift.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(Color.accentColor)
@@ -140,11 +144,11 @@ struct PaywallView: View {
                     .foregroundStyle(Color.accentColor)
                     .kerning(0.5)
 
-                Text(SubscriptionConfig.Copy.ctaTitle)
+                Text(s.paywallTrialHeadline)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                Text(SubscriptionConfig.Copy.pricingDetail)
+                Text(s.paywallTrialPricingLine)
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -208,14 +212,15 @@ struct PaywallView: View {
     // MARK: - CTA
 
     private var ctaSection: some View {
-        Button {
+        let s = strings
+        return Button {
             Task { await handlePurchase() }
         } label: {
             ZStack {
                 if isPurchasing {
                     ProgressView().tint(.white)
                 } else {
-                    Text(SubscriptionConfig.Copy.startTrial)
+                    Text(s.paywallStartTrial)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -233,8 +238,9 @@ struct PaywallView: View {
     // MARK: - Secondary actions
 
     private var secondaryActions: some View {
-        VStack(spacing: 12) {
-            Button(SubscriptionConfig.Copy.notNow) {
+        let s = strings
+        return VStack(spacing: 12) {
+            Button(s.paywallNotNow) {
                 subscriptionManager.dismissPaywall()
                 dismiss()
             }
@@ -249,10 +255,10 @@ struct PaywallView: View {
                     HStack(spacing: 6) {
                         ProgressView()
                             .scaleEffect(0.75)
-                        Text("Restoring…")
+                        Text(s.paywallRestoring)
                     }
                 } else {
-                    Text(SubscriptionConfig.Copy.restore)
+                    Text(s.paywallRestorePurchases)
                 }
             }
             .font(.system(size: 14))
@@ -265,10 +271,11 @@ struct PaywallView: View {
     // MARK: - Disclosure
 
     private var disclosureSection: some View {
-        VStack(spacing: 4) {
-            Text(SubscriptionConfig.Copy.disclosure)
-            Text(SubscriptionConfig.Copy.renewalNotice)
-            Text(SubscriptionConfig.Copy.cancelAnytime)
+        let s = strings
+        return VStack(spacing: 4) {
+            Text(s.paywallDisclosureLine)
+            Text(s.paywallAutoRenews)
+            Text(s.paywallCancelAnytime)
         }
         .font(.system(size: 11))
         .foregroundStyle(Color(.tertiaryLabel))
@@ -391,9 +398,11 @@ private struct PlanCard: View {
 #Preview("Paywall – Yearly selected") {
     PaywallView()
         .environment(SubscriptionManager())
+        .environment(\.appUILanguage, .en)
 }
 
 #Preview("Paywall – Monthly selected") {
     PaywallView()
         .environment(SubscriptionManager())
+        .environment(\.appUILanguage, .en)
 }

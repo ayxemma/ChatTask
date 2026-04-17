@@ -1,0 +1,179 @@
+import Foundation
+
+extension SpeechServiceMessages {
+    static let traditionalChinese = SpeechServiceMessages(
+        speechNotAvailable: "語音辨識不可用。",
+        micDeniedSettings: "麥克風權限被拒絕。請在 設定 → 隱私權 → 麥克風 中開啟。",
+        micDenied: "麥克風權限被拒絕。請在 設定 → 隱私權 → 麥克風 中開啟。",
+        micUnavailable: "麥克風不可用。",
+        unsupportedLocale: "不支援「%@」的語音辨識，請嘗試其他語言。",
+        localeUnavailable: "此裝置暫時無法使用「%@」的語音辨識。可嘗試英文、檢查網路或稍後再試。",
+        micUseFailed: "無法使用麥克風：%@",
+        micInputUnavailable: "此裝置沒有可用的麥克風輸入。",
+        audioStartFailed: "無法啟動音訊：%@",
+        nothingToStop: "尚未開始聆聽，無需停止。",
+        speechDeniedSettings: "語音辨識已關閉。請在 設定 → 隱私權 → 語音辨識 中開啟。",
+        speechRestricted: "此裝置限制使用語音辨識。",
+        speechNotDetermined: "需要語音辨識權限。",
+        speechNotAllowed: "不允許使用語音辨識。",
+        noSpeechDetected: "未偵測到語音，請靠近麥克風再試。",
+        recognitionCanceled: "辨識已取消。",
+        recognitionFailedFormat: "語音辨識失敗：%@",
+        recognitionStopped: "辨識已停止。",
+        interrupted: "已中斷。"
+    )
+
+    static let french = SpeechServiceMessages(
+        speechNotAvailable: "La reconnaissance vocale n’est pas disponible.",
+        micDeniedSettings: "Microphone refusé. Activez-le dans Réglages → Confidentialité → Microphone.",
+        micDenied: "Microphone refusé. Activez-le dans Réglages → Confidentialité → Microphone.",
+        micUnavailable: "Le microphone n’est pas disponible.",
+        unsupportedLocale: "Pas de reconnaissance vocale pour « %@ ». Essayez une autre langue.",
+        localeUnavailable: "La reconnaissance vocale n’est pas disponible pour « %@ » pour le moment. Essayez l’anglais, vérifiez le réseau ou réessayez plus tard.",
+        micUseFailed: "Impossible d’utiliser le microphone : %@",
+        micInputUnavailable: "Pas d’entrée microphone sur cet appareil.",
+        audioStartFailed: "Impossible de démarrer l’audio : %@",
+        nothingToStop: "Rien à arrêter — commencez d’abord l’écoute.",
+        speechDeniedSettings: "Reconnaissance vocale désactivée. Activez-la dans Réglages → Confidentialité → Reconnaissance vocale.",
+        speechRestricted: "La reconnaissance vocale est restreinte sur cet appareil.",
+        speechNotDetermined: "Autorisation de reconnaissance vocale requise.",
+        speechNotAllowed: "Reconnaissance vocale non autorisée.",
+        noSpeechDetected: "Aucune voix détectée. Réessayez plus près du microphone.",
+        recognitionCanceled: "Reconnaissance annulée.",
+        recognitionFailedFormat: "Échec de la reconnaissance vocale : %@",
+        recognitionStopped: "Reconnaissance arrêtée.",
+        interrupted: "Interrompu."
+    )
+
+    static let german = SpeechServiceMessages(
+        speechNotAvailable: "Spracherkennung ist nicht verfügbar.",
+        micDeniedSettings: "Mikrofonzugriff verweigert. Aktivieren Sie ihn unter Einstellungen → Datenschutz → Mikrofon.",
+        micDenied: "Mikrofonzugriff verweigert. Aktivieren Sie ihn unter Einstellungen → Datenschutz → Mikrofon.",
+        micUnavailable: "Mikrofon ist nicht verfügbar.",
+        unsupportedLocale: "Keine Spracherkennung für „%@“. Versuchen Sie eine andere Sprache.",
+        localeUnavailable: "Spracherkennung für „%@“ ist derzeit nicht verfügbar. Versuchen Sie Englisch, prüfen Sie das Netzwerk oder versuchen Sie es später erneut.",
+        micUseFailed: "Mikrofon konnte nicht genutzt werden: %@",
+        micInputUnavailable: "Kein Mikrofoneingang auf diesem Gerät.",
+        audioStartFailed: "Audio konnte nicht gestartet werden: %@",
+        nothingToStop: "Nichts zu stoppen — hören Sie zuerst zu.",
+        speechDeniedSettings: "Spracherkennung ist aus. Aktivieren Sie sie unter Einstellungen → Datenschutz → Spracherkennung.",
+        speechRestricted: "Spracherkennung ist auf diesem Gerät eingeschränkt.",
+        speechNotDetermined: "Spracherkennungsberechtigung erforderlich.",
+        speechNotAllowed: "Spracherkennung nicht erlaubt.",
+        noSpeechDetected: "Keine Sprache erkannt. Versuchen Sie es näher am Mikrofon.",
+        recognitionCanceled: "Erkennung abgebrochen.",
+        recognitionFailedFormat: "Spracherkennung fehlgeschlagen: %@",
+        recognitionStopped: "Erkennung gestoppt.",
+        interrupted: "Unterbrochen."
+    )
+
+    static let japanese = SpeechServiceMessages(
+        speechNotAvailable: "音声認識は利用できません。",
+        micDeniedSettings: "マイクが拒否されました。設定 → プライバシー → マイクで有効にしてください。",
+        micDenied: "マイクが拒否されました。設定 → プライバシー → マイクで有効にしてください。",
+        micUnavailable: "マイクが利用できません。",
+        unsupportedLocale: "「%@」の音声認識はサポートされていません。別の言語を試してください。",
+        localeUnavailable: "「%@」の音声認識は現在利用できません。英語を試すか、ネットワークを確認するか、後でもう一度お試しください。",
+        micUseFailed: "マイクを使用できませんでした：%@",
+        micInputUnavailable: "このデバイスにマイク入力がありません。",
+        audioStartFailed: "オーディオを開始できませんでした：%@",
+        nothingToStop: "停止するものがありません — 先に聞き取りを開始してください。",
+        speechDeniedSettings: "音声認識がオフです。設定 → プライバシー → 音声認識で有効にしてください。",
+        speechRestricted: "このデバイスでは音声認識が制限されています。",
+        speechNotDetermined: "音声認識の許可が必要です。",
+        speechNotAllowed: "音声認識が許可されていません。",
+        noSpeechDetected: "音声が検出されませんでした。マイクに近づいて再試行してください。",
+        recognitionCanceled: "認識がキャンセルされました。",
+        recognitionFailedFormat: "音声認識に失敗しました：%@",
+        recognitionStopped: "認識を停止しました。",
+        interrupted: "中断されました。"
+    )
+
+    static let korean = SpeechServiceMessages(
+        speechNotAvailable: "음성 인식을 사용할 수 없습니다.",
+        micDeniedSettings: "마이크가 거부되었습니다. 설정 → 개인정보 보호 → 마이크에서 켜 주세요.",
+        micDenied: "마이크가 거부되었습니다. 설정 → 개인정보 보호 → 마이크에서 켜 주세요.",
+        micUnavailable: "마이크를 사용할 수 없습니다.",
+        unsupportedLocale: "「%@」 음성 인식은 지원되지 않습니다. 다른 언어를 시도하세요.",
+        localeUnavailable: "지금은 「%@」 음성 인식을 사용할 수 없습니다. 영어를 시도하거나 네트워크를 확인하거나 나중에 다시 시도하세요.",
+        micUseFailed: "마이크를 사용할 수 없습니다: %@",
+        micInputUnavailable: "이 기기에 마이크 입력이 없습니다.",
+        audioStartFailed: "오디오를 시작할 수 없습니다: %@",
+        nothingToStop: "중지할 항목이 없습니다 — 먼저 듣기를 시작하세요.",
+        speechDeniedSettings: "음성 인식이 꺼져 있습니다. 설정 → 개인정보 보호 → 음성 인식에서 켜 주세요.",
+        speechRestricted: "이 기기에서 음성 인식이 제한되어 있습니다.",
+        speechNotDetermined: "음성 인식 권한이 필요합니다.",
+        speechNotAllowed: "음성 인식이 허용되지 않았습니다.",
+        noSpeechDetected: "음성이 감지되지 않았습니다. 마이크에 더 가까이에서 다시 시도하세요.",
+        recognitionCanceled: "인식이 취소되었습니다.",
+        recognitionFailedFormat: "음성 인식 실패: %@",
+        recognitionStopped: "인식이 중지되었습니다.",
+        interrupted: "중단되었습니다."
+    )
+
+    static let portugueseBrazil = SpeechServiceMessages(
+        speechNotAvailable: "O reconhecimento de fala não está disponível.",
+        micDeniedSettings: "Microfone negado. Ative em Ajustes → Privacidade → Microfone.",
+        micDenied: "Microfone negado. Ative em Ajustes → Privacidade → Microfone.",
+        micUnavailable: "O microfone não está disponível.",
+        unsupportedLocale: "Sem reconhecimento de fala para «%@». Tente outro idioma.",
+        localeUnavailable: "O reconhecimento de fala não está disponível para «%@» agora. Tente inglês, verifique a rede ou tente mais tarde.",
+        micUseFailed: "Não foi possível usar o microfone: %@",
+        micInputUnavailable: "Sem entrada de microfone neste dispositivo.",
+        audioStartFailed: "Não foi possível iniciar o áudio: %@",
+        nothingToStop: "Nada para parar — comece a ouvir primeiro.",
+        speechDeniedSettings: "Reconhecimento de fala desativado. Ative em Ajustes → Privacidade → Reconhecimento de fala.",
+        speechRestricted: "O reconhecimento de fala está restrito neste dispositivo.",
+        speechNotDetermined: "É necessária permissão de reconhecimento de fala.",
+        speechNotAllowed: "Reconhecimento de fala não permitido.",
+        noSpeechDetected: "Nenhuma fala detectada. Tente novamente mais perto do microfone.",
+        recognitionCanceled: "Reconhecimento cancelado.",
+        recognitionFailedFormat: "Falha no reconhecimento de fala: %@",
+        recognitionStopped: "Reconhecimento parado.",
+        interrupted: "Interrompido."
+    )
+
+    static let italian = SpeechServiceMessages(
+        speechNotAvailable: "Il riconoscimento vocale non è disponibile.",
+        micDeniedSettings: "Microfono negato. Attivalo in Impostazioni → Privacy → Microfono.",
+        micDenied: "Microfono negato. Attivalo in Impostazioni → Privacy → Microfono.",
+        micUnavailable: "Il microfono non è disponibile.",
+        unsupportedLocale: "Nessun riconoscimento vocale per «%@». Prova un’altra lingua.",
+        localeUnavailable: "Il riconoscimento vocale non è disponibile per «%@» ora. Prova l’inglese, controlla la rete o riprova più tardi.",
+        micUseFailed: "Impossibile usare il microfono: %@",
+        micInputUnavailable: "Nessun ingresso microfono su questo dispositivo.",
+        audioStartFailed: "Impossibile avviare l’audio: %@",
+        nothingToStop: "Niente da fermare — inizia prima ad ascoltare.",
+        speechDeniedSettings: "Riconoscimento vocale disattivato. Attivalo in Impostazioni → Privacy → Riconoscimento vocale.",
+        speechRestricted: "Il riconoscimento vocale è limitato su questo dispositivo.",
+        speechNotDetermined: "È richiesta l’autorizzazione al riconoscimento vocale.",
+        speechNotAllowed: "Riconoscimento vocale non consentito.",
+        noSpeechDetected: "Nessuna voce rilevata. Riprova più vicino al microfono.",
+        recognitionCanceled: "Riconoscimento annullato.",
+        recognitionFailedFormat: "Riconoscimento vocale non riuscito: %@",
+        recognitionStopped: "Riconoscimento fermato.",
+        interrupted: "Interrotto."
+    )
+
+    static let dutch = SpeechServiceMessages(
+        speechNotAvailable: "Spraakherkenning is niet beschikbaar.",
+        micDeniedSettings: "Microfoon geweigerd. Schakel in bij Instellingen → Privacy → Microfoon.",
+        micDenied: "Microfoon geweigerd. Schakel in bij Instellingen → Privacy → Microfoon.",
+        micUnavailable: "Microfoon is niet beschikbaar.",
+        unsupportedLocale: "Geen spraakherkenning voor «%@». Probeer een andere taal.",
+        localeUnavailable: "Spraakherkenning is nu niet beschikbaar voor «%@». Probeer Engels, controleer het netwerk of probeer het later opnieuw.",
+        micUseFailed: "Kon microfoon niet gebruiken: %@",
+        micInputUnavailable: "Geen microfooningang op dit apparaat.",
+        audioStartFailed: "Kon audio niet starten: %@",
+        nothingToStop: "Niets te stoppen — begin eerst met luisteren.",
+        speechDeniedSettings: "Spraakherkenning staat uit. Schakel in bij Instellingen → Privacy → Spraakherkenning.",
+        speechRestricted: "Spraakherkenning is beperkt op dit apparaat.",
+        speechNotDetermined: "Toestemming voor spraakherkenning is vereist.",
+        speechNotAllowed: "Spraakherkenning niet toegestaan.",
+        noSpeechDetected: "Geen spraak gedetecteerd. Probeer opnieuw dichter bij de microfoon.",
+        recognitionCanceled: "Herkenning geannuleerd.",
+        recognitionFailedFormat: "Spraakherkenning mislukt: %@",
+        recognitionStopped: "Herkenning gestopt.",
+        interrupted: "Onderbroken."
+    )
+}

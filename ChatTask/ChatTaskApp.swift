@@ -46,6 +46,8 @@ private struct AppShellView: View {
             .environment(\.locale, uiLang.locale)
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
+                    .environment(\.appUILanguage, uiLang)
+                    .environment(\.locale, uiLang.locale)
             }
             .onChange(of: allTasks.count) { _, newCount in
                 if !showPaywall && subscriptionManager.shouldShowPaywall(taskCount: newCount) {

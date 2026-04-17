@@ -6,7 +6,15 @@ import SwiftUI
 enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
     case en = "en"
     case zhHans = "zh-Hans"
+    case zhHant = "zh-Hant"
     case es = "es"
+    case fr = "fr"
+    case de = "de"
+    case ja = "ja"
+    case ko = "ko"
+    case ptBR = "pt-BR"
+    case it = "it"
+    case nl = "nl"
 
     var id: String { rawValue }
 
@@ -15,7 +23,15 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .en: return "English"
         case .zhHans: return "简体中文"
+        case .zhHant: return "繁體中文"
         case .es: return "Español"
+        case .fr: return "Français"
+        case .de: return "Deutsch"
+        case .ja: return "日本語"
+        case .ko: return "한국어"
+        case .ptBR: return "Português (Brasil)"
+        case .it: return "Italiano"
+        case .nl: return "Nederlands"
         }
     }
 
@@ -25,7 +41,15 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .en: return Locale(identifier: "en_US")
         case .zhHans: return Locale(identifier: "zh_CN")
+        case .zhHant: return Locale(identifier: "zh_TW")
         case .es: return Locale(identifier: "es_ES")
+        case .fr: return Locale(identifier: "fr_FR")
+        case .de: return Locale(identifier: "de_DE")
+        case .ja: return Locale(identifier: "ja_JP")
+        case .ko: return Locale(identifier: "ko_KR")
+        case .ptBR: return Locale(identifier: "pt_BR")
+        case .it: return Locale(identifier: "it_IT")
+        case .nl: return Locale(identifier: "nl_NL")
         }
     }
 
@@ -40,6 +64,17 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
     static func defaultForDevice() -> AppUILanguage {
         let primary = Locale.preferredLanguages.first?.lowercased() ?? ""
         if primary.hasPrefix("zh-hans") || primary.hasPrefix("zh-cn") { return .zhHans }
+        if primary.hasPrefix("zh-hant") || primary.hasPrefix("zh-tw") || primary.hasPrefix("zh-hk") || primary.hasPrefix("zh-mo") {
+            return .zhHant
+        }
+        if primary.hasPrefix("ja") { return .ja }
+        if primary.hasPrefix("ko") { return .ko }
+        if primary.hasPrefix("pt-br") { return .ptBR }
+        if primary == "pt" { return .ptBR }
+        if primary.hasPrefix("fr") { return .fr }
+        if primary.hasPrefix("de") { return .de }
+        if primary.hasPrefix("it") { return .it }
+        if primary.hasPrefix("nl") { return .nl }
         if primary.hasPrefix("es") { return .es }
         return .en
     }
@@ -59,7 +94,15 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .en: return .english
         case .zhHans: return .chineseSimplified
+        case .zhHant: return .traditionalChinese
         case .es: return .spanish
+        case .fr: return .french
+        case .de: return .german
+        case .ja: return .japanese
+        case .ko: return .korean
+        case .ptBR: return .portugueseBrazil
+        case .it: return .italian
+        case .nl: return .dutch
         }
     }
 
@@ -67,7 +110,15 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .en: return .english
         case .zhHans: return .chineseSimplified
+        case .zhHant: return .traditionalChinese
         case .es: return .spanish
+        case .fr: return .french
+        case .de: return .german
+        case .ja: return .japanese
+        case .ko: return .korean
+        case .ptBR: return .portugueseBrazil
+        case .it: return .italian
+        case .nl: return .dutch
         }
     }
 }
@@ -239,6 +290,27 @@ struct AppStrings {
     let settingsAppRowLabel: String
     let settingsAlertErrorTitle: String
 
+    /// Shown when a task has a date but no specific time (reserved for schedule UI).
+    let needsTime: String
+
+    /// Default reminder lead-time options (Settings).
+    let reminderOffsetAtTime: String
+    let reminderOffset5Min: String
+    let reminderOffset15Min: String
+    let reminderOffset30Min: String
+    let reminderOffset1Hour: String
+
+    /// Subscription paywall marketing copy (prices are also in `SubscriptionConfig`; strings describe the same offer).
+    let paywallTrialHeadline: String
+    let paywallTrialPricingLine: String
+    let paywallDisclosureLine: String
+    let paywallAutoRenews: String
+    let paywallCancelAnytime: String
+    let paywallRestorePurchases: String
+    let paywallNotNow: String
+    let paywallStartTrial: String
+    let paywallRestoring: String
+
     static let english = AppStrings(
         tagline: "Speak → Understand → Schedule → Remind",
         permissionStatus: "Permission status",
@@ -387,7 +459,22 @@ struct AppStrings {
         settingsSectionAbout: "About",
         settingsVersionLabel: "Version",
         settingsAppRowLabel: "App",
-        settingsAlertErrorTitle: "Error"
+        settingsAlertErrorTitle: "Error",
+        needsTime: "Needs time",
+        reminderOffsetAtTime: "At time",
+        reminderOffset5Min: "5 min before",
+        reminderOffset15Min: "15 min before",
+        reminderOffset30Min: "30 min before",
+        reminderOffset1Hour: "1 hour before",
+        paywallTrialHeadline: "Start your 5-day free trial",
+        paywallTrialPricingLine: "Then $2.99/month or $24.99/year",
+        paywallDisclosureLine: "5-day free trial, then $2.99/month or $24.99/year.",
+        paywallAutoRenews: "Auto-renews unless canceled.",
+        paywallCancelAnytime: "Cancel anytime.",
+        paywallRestorePurchases: "Restore Purchases",
+        paywallNotNow: "Not now",
+        paywallStartTrial: "Start Free Trial",
+        paywallRestoring: "Restoring…"
     )
 
     static let chineseSimplified = AppStrings(
@@ -538,7 +625,22 @@ struct AppStrings {
         settingsSectionAbout: "关于",
         settingsVersionLabel: "版本",
         settingsAppRowLabel: "应用",
-        settingsAlertErrorTitle: "错误"
+        settingsAlertErrorTitle: "错误",
+        needsTime: "需要具体时间",
+        reminderOffsetAtTime: "准时",
+        reminderOffset5Min: "提前 5 分钟",
+        reminderOffset15Min: "提前 15 分钟",
+        reminderOffset30Min: "提前 30 分钟",
+        reminderOffset1Hour: "提前 1 小时",
+        paywallTrialHeadline: "开始 5 天免费试用",
+        paywallTrialPricingLine: "之后 $2.99/月或 $24.99/年",
+        paywallDisclosureLine: "5 天免费试用，之后 $2.99/月或 $24.99/年。",
+        paywallAutoRenews: "除非取消，否则自动续订。",
+        paywallCancelAnytime: "随时可取消。",
+        paywallRestorePurchases: "恢复购买",
+        paywallNotNow: "暂不",
+        paywallStartTrial: "开始免费试用",
+        paywallRestoring: "正在恢复…"
     )
 
     static let spanish = AppStrings(
@@ -689,7 +791,22 @@ struct AppStrings {
         settingsSectionAbout: "Acerca de",
         settingsVersionLabel: "Versión",
         settingsAppRowLabel: "App",
-        settingsAlertErrorTitle: "Error"
+        settingsAlertErrorTitle: "Error",
+        needsTime: "Requiere hora",
+        reminderOffsetAtTime: "A la hora",
+        reminderOffset5Min: "5 min antes",
+        reminderOffset15Min: "15 min antes",
+        reminderOffset30Min: "30 min antes",
+        reminderOffset1Hour: "1 h antes",
+        paywallTrialHeadline: "Empieza tu prueba gratis de 5 días",
+        paywallTrialPricingLine: "Luego $2.99/mes o $24.99/año",
+        paywallDisclosureLine: "Prueba gratis de 5 días, luego $2.99/mes o $24.99/año.",
+        paywallAutoRenews: "Se renueva automáticamente salvo cancelación.",
+        paywallCancelAnytime: "Cancela cuando quieras.",
+        paywallRestorePurchases: "Restaurar compras",
+        paywallNotNow: "Ahora no",
+        paywallStartTrial: "Empezar prueba gratis",
+        paywallRestoring: "Restaurando…"
     )
 }
 
