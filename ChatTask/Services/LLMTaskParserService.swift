@@ -40,7 +40,10 @@ struct LLMTaskParserService: TaskParsing {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            Self.log.error("[Parse] networkError error=\(String(describing: error), privacy: .public)")
+            Self.log.error("[Parse] requestFailed rootCause=networkError error=\(String(describing: error), privacy: .public)")
+            if let urlError = error as? URLError {
+                Self.log.error("[Parse] urlError code=\(urlError.code.rawValue, privacy: .public) — connection refused often means backend not running or wrong CHATTASK_BACKEND_URL / default base URL")
+            }
             throw LLMError.networkError(underlying: error)
         }
 
@@ -52,7 +55,7 @@ struct LLMTaskParserService: TaskParsing {
         Self.logLongString(prefix: "[Parse] rawHttpResponseBody", text: rawResponseBody)
 
         if let http, !(200...299).contains(http.statusCode) {
-            Self.log.error("[Parse] request failed httpStatusCode=\(statusCode, privacy: .public)")
+            Self.log.error("[Parse] requestFailed rootCause=httpError httpStatusCode=\(statusCode, privacy: .public) — see raw body logs above")
             throw LLMError.invalidResponse
         }
 
@@ -60,10 +63,11 @@ struct LLMTaskParserService: TaskParsing {
         do {
             parsed = try JSONDecoder().decode(LLMTaskParseResponse.self, from: data)
         } catch {
-            Self.log.error("[Parse] LLMTaskParseResponse decode failed error=\(String(describing: error), privacy: .public)")
+            Self.log.error("[Parse] requestFailed rootCause=invalidJSON decodeError=\(String(describing: error), privacy: .public)")
             throw LLMError.decodingFailed
         }
 
+        Self.log.info("[Parse] requestSucceeded")
         Self.logDecodedResponse(parsed)
 
         let tz = TimeZone(identifier: timeZoneIdentifier) ?? .current

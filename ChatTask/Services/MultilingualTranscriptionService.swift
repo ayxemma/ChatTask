@@ -94,6 +94,9 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
             Self.log.error("[Transcription] transcriptionFailureRootCause=networkError error=\(String(describing: error), privacy: .public)")
+            if let urlError = error as? URLError {
+                Self.log.error("[Transcription] urlError code=\(urlError.code.rawValue, privacy: .public) — if backend is down, wrong URL, or ATS blocked HTTP, check Console and BackendConfig / Info.plist NSAllowsLocalNetworking")
+            }
             throw MultilingualTranscriptionError.networkError(underlying: error)
         }
 
@@ -124,7 +127,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
         }
 
         let text = decoded.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        Self.log.info("[Transcription] succeeded transcriptLength=\(text.count, privacy: .public)")
+        Self.log.info("[Transcription] requestSucceeded transcriptLength=\(text.count, privacy: .public)")
         return text
     }
 }

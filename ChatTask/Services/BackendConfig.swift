@@ -2,19 +2,23 @@ import Foundation
 
 /// Central configuration for the ChatTask HTTP backend.
 ///
-/// **Local development**
-/// - **Simulator**: `http://127.0.0.1:<port>` or `http://localhost:<port>` reaches the host machine.
-/// - **Physical device**: `localhost` is the phone itself — use your Mac’s LAN IP (e.g. `http://192.168.1.10:<port>`) or a deployed staging URL.
+/// **Simulator (DEBUG)**  
+/// Use `http://127.0.0.1:<port>` or `http://localhost:<port>` — both reach the Mac that runs the Simulator.
+///
+/// **Physical device**  
+/// `localhost` / `127.0.0.1` refer to the **phone**, not your Mac. Point the app at your Mac’s **LAN IP**
+/// (e.g. `http://192.168.1.10:8000`) or a deployed URL. Run the backend bound to all interfaces (`0.0.0.0`)
+/// so it accepts connections from the device.
 ///
 /// Override at runtime (highest priority) with the `CHATTASK_BACKEND_URL` environment variable
-/// (e.g. Xcode scheme → Run → Arguments → Environment Variables).
+/// (Xcode → Scheme → Run → Arguments → Environment Variables). Use this when the default port or host differs.
 enum BackendConfig {
 
     /// Default base URL when no override is set.
-    /// - DEBUG: local backend placeholder (change port to match your server).
-    /// - RELEASE: replace with your production API origin before shipping.
+    /// - DEBUG: local backend (adjust port to match your server; common Python/uvicorn default is 8000).
+    /// - RELEASE: replace with your real production API origin before shipping.
     #if DEBUG
-    private static let defaultBaseURLString = "http://127.0.0.1:8787"
+    private static let defaultBaseURLString = "http://127.0.0.1:8000"
     #else
     private static let defaultBaseURLString = "https://api.chattask.app"
     #endif

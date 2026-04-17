@@ -464,6 +464,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChatTask/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ChatTask;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChatTask adds events to your calendar when you ask.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ChatTask uses the microphone to capture your voice commands.";
@@ -496,6 +497,7 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ChatTask/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ChatTask;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "ChatTask adds events to your calendar when you ask.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ChatTask uses the microphone to capture your voice commands.";
