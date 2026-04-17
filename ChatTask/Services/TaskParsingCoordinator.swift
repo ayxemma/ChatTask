@@ -84,7 +84,11 @@ struct TaskParsingCoordinator {
                 Self.logParsedCommand(result, label: "final (llm)")
                 return result
             } catch {
-                Self.log.error("[TaskParsing] llmParser succeeded=false error=\(String(describing: error), privacy: .public) — falling back to localParser")
+                if let le = error as? LLMError {
+                    Self.log.error("[TaskParsing] llmParser succeeded=false requestId=\(le.correlationRequestID.uuidString, privacy: .public) error=\(String(describing: error), privacy: .public) — falling back to localParser")
+                } else {
+                    Self.log.error("[TaskParsing] llmParser succeeded=false error=\(String(describing: error), privacy: .public) — falling back to localParser")
+                }
             }
         } else {
             Self.log.warning("[TaskParsing] llmParser called=false (not configured) — falling back to localParser")
@@ -135,7 +139,11 @@ struct TaskParsingCoordinator {
                 Self.logParsedCommand(result, label: "final (llm fallback)")
                 return result
             } catch {
-                Self.log.error("[TaskParsing] llmParser fallbackSucceeded=false error=\(String(describing: error), privacy: .public)")
+                if let le = error as? LLMError {
+                    Self.log.error("[TaskParsing] llmParser fallbackSucceeded=false requestId=\(le.correlationRequestID.uuidString, privacy: .public) error=\(String(describing: error), privacy: .public)")
+                } else {
+                    Self.log.error("[TaskParsing] llmParser fallbackSucceeded=false error=\(String(describing: error), privacy: .public)")
+                }
             }
         }
 

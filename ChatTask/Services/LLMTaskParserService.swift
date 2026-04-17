@@ -2,9 +2,19 @@ import Foundation
 import os.log
 
 enum LLMError: Error {
-    case invalidResponse
-    case decodingFailed
-    case networkError(underlying: Error)
+    case invalidResponse(requestId: UUID)
+    case decodingFailed(requestId: UUID)
+    case networkError(underlying: Error, requestId: UUID)
+}
+
+extension LLMError {
+    var correlationRequestID: UUID {
+        switch self {
+        case .invalidResponse(let id): return id
+        case .decodingFailed(let id): return id
+        case .networkError(_, let id): return id
+        }
+    }
 }
 
 /// Parses natural-language task commands via the ChatTask backend `POST /parse` endpoint.
@@ -13,24 +23,27 @@ struct LLMTaskParserService: TaskParsing {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "TaskParsing")
 
     func parse(text: String, now: Date, localeIdentifier: String, timeZoneIdentifier: String) async throws -> ParsedCommand {
+        let requestId = UUID()
         let endpoint = BackendConfig.parseURL
-        Self.log.info("[Parse] backendBaseURL=\(BackendConfig.baseURL.absoluteString, privacy: .public) parseURL=\(endpoint.absoluteString, privacy: .public)")
+        Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestStart backendBaseURL=\(BackendConfig.baseURL.absoluteString, privacy: .public)")
 
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
         let nowString = formatter.string(from: now)
 
         let requestBody: [String: Any] = [
+            BackendCorrelation.requestIDJSONKey: requestId.uuidString,
             "text": text,
             "now": nowString,
             "timezone": timeZoneIdentifier,
             "locale": localeIdentifier,
         ]
 
-        Self.log.info("[Parse] requestStart textLength=\(text.count, privacy: .public) timezone=\(timeZoneIdentifier, privacy: .public)")
+        Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) bodyReady textLength=\(text.count, privacy: .public) timezone=\(timeZoneIdentifier, privacy: .public)")
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        request.setValue(requestId.uuidString, forHTTPHeaderField: BackendCorrelation.requestIDHeaderField)
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         request.timeoutInterval = 120
@@ -40,34 +53,34 @@ struct LLMTaskParserService: TaskParsing {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            Self.log.error("[Parse] requestFailed rootCause=networkError error=\(String(describing: error), privacy: .public)")
+            Self.log.error("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestFailed rootCause=networkError error=\(String(describing: error), privacy: .public)")
             if let urlError = error as? URLError {
-                Self.log.error("[Parse] urlError code=\(urlError.code.rawValue, privacy: .public) — connection refused often means backend not running or wrong CHATTASK_BACKEND_URL / default base URL")
+                Self.log.error("[Parse] requestId=\(requestId.uuidString, privacy: .public) urlError code=\(urlError.code.rawValue, privacy: .public) — connection refused often means backend not running or wrong CHATTASK_BACKEND_URL / default base URL")
             }
-            throw LLMError.networkError(underlying: error)
+            throw LLMError.networkError(underlying: error, requestId: requestId)
         }
 
         let http = response as? HTTPURLResponse
         let statusCode = http?.statusCode ?? -1
-        Self.log.info("[Parse] httpStatusCode=\(statusCode, privacy: .public) responseBytes=\(data.count, privacy: .public)")
+        Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) httpStatusCode=\(statusCode, privacy: .public) responseBytes=\(data.count, privacy: .public)")
 
         let rawResponseBody = String(data: data, encoding: .utf8) ?? "<non-UTF8 body, \(data.count) bytes>"
-        Self.logLongString(prefix: "[Parse] rawHttpResponseBody", text: rawResponseBody)
+        Self.logLongString(prefix: "[Parse] rawHttpResponseBody requestId=\(requestId.uuidString)", text: rawResponseBody)
 
         if let http, !(200...299).contains(http.statusCode) {
-            Self.log.error("[Parse] requestFailed rootCause=httpError httpStatusCode=\(statusCode, privacy: .public) — see raw body logs above")
-            throw LLMError.invalidResponse
+            Self.log.error("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestFailed rootCause=httpError httpStatusCode=\(statusCode, privacy: .public) — see raw body logs above")
+            throw LLMError.invalidResponse(requestId: requestId)
         }
 
         let parsed: LLMTaskParseResponse
         do {
             parsed = try JSONDecoder().decode(LLMTaskParseResponse.self, from: data)
         } catch {
-            Self.log.error("[Parse] requestFailed rootCause=invalidJSON decodeError=\(String(describing: error), privacy: .public)")
-            throw LLMError.decodingFailed
+            Self.log.error("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestFailed rootCause=invalidJSON decodeError=\(String(describing: error), privacy: .public)")
+            throw LLMError.decodingFailed(requestId: requestId)
         }
 
-        Self.log.info("[Parse] requestSucceeded")
+        Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestSucceeded")
         Self.logDecodedResponse(parsed)
 
         let tz = TimeZone(identifier: timeZoneIdentifier) ?? .current

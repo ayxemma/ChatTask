@@ -340,27 +340,34 @@ final class VoiceCommandViewModel {
             // and a clean user-facing message (no API / HTTP / internal terms).
             let rootCause: String
             let userMessage: String
+            let requestIdForLog: String
             switch error {
-            case MultilingualTranscriptionError.fileReadFailed(let u):
+            case MultilingualTranscriptionError.fileReadFailed(let u, let rid):
+                requestIdForLog = rid.uuidString
                 rootCause = "fileReadFailed — \(u.localizedDescription)"
                 userMessage = strings.chatErrorSomethingWentWrong
-            case MultilingualTranscriptionError.fileEmpty:
+            case MultilingualTranscriptionError.fileEmpty(let rid):
+                requestIdForLog = rid.uuidString
                 rootCause = "fileEmpty — audio file was empty or contained no speech frames"
                 userMessage = strings.chatErrorNothingRecorded
-            case MultilingualTranscriptionError.networkError(let u):
+            case MultilingualTranscriptionError.networkError(let u, let rid):
+                requestIdForLog = rid.uuidString
                 rootCause = "networkError — \(u.localizedDescription)"
-                userMessage = strings.chatErrorOffline
-            case MultilingualTranscriptionError.httpError(let code, let body):
+                userMessage = BackendUserFacingErrorMessages.transcriptionNetwork(strings: strings, underlying: u)
+            case MultilingualTranscriptionError.httpError(let code, let body, let rid):
+                requestIdForLog = rid.uuidString
                 rootCause = "httpError — status=\(code) body=\(body.prefix(200))"
                 userMessage = strings.chatErrorServiceUnavailable
-            case MultilingualTranscriptionError.decodingFailed(let u, let raw):
+            case MultilingualTranscriptionError.decodingFailed(let u, let raw, let rid):
+                requestIdForLog = rid.uuidString
                 rootCause = "decodingFailed — \(u.localizedDescription) rawBody=\(raw.prefix(200))"
                 userMessage = strings.chatErrorSomethingWentWrong
             default:
+                requestIdForLog = "—"
                 rootCause = "unknown — \(String(describing: error))"
                 userMessage = strings.chatErrorSomethingWentWrong
             }
-            Self.log.error("[VoiceChat] cloudTranscriptionFailure rootCause=\(rootCause, privacy: .public)")
+            Self.log.error("[VoiceChat] cloudTranscriptionFailure requestId=\(requestIdForLog, privacy: .public) rootCause=\(rootCause, privacy: .public)")
             chatMessages.append(ChatMessage(role: .assistant, text: userMessage))
             parsedCommand = nil
             chatFlowState = .error

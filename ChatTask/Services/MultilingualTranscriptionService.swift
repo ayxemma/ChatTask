@@ -12,13 +12,11 @@ protocol FallbackTranscribing {
 // MARK: - Errors
 
 enum MultilingualTranscriptionError: Error {
-    /// Backend base URL could not be resolved (should not happen with valid defaults).
-    case invalidBackendConfiguration
-    case fileReadFailed(underlying: Error)
-    case fileEmpty
-    case networkError(underlying: Error)
-    case httpError(statusCode: Int, body: String)
-    case decodingFailed(underlying: Error, rawBody: String)
+    case fileReadFailed(underlying: Error, requestId: UUID)
+    case fileEmpty(requestId: UUID)
+    case networkError(underlying: Error, requestId: UUID)
+    case httpError(statusCode: Int, body: String, requestId: UUID)
+    case decodingFailed(underlying: Error, rawBody: String, requestId: UUID)
 }
 
 /// Uploads recorded audio to the ChatTask backend `POST /transcribe` endpoint.
@@ -31,28 +29,29 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
 
     /// Reads audio from disk and returns the transcript string from the backend JSON `{ "text": "..." }`.
     func transcribe(audioFileURL: URL) async throws -> String {
+        let requestId = UUID()
         let endpoint = BackendConfig.transcribeURL
-        Self.log.info("[Transcription] backendBaseURL=\(BackendConfig.baseURL.absoluteString, privacy: .public) transcribeURL=\(endpoint.absoluteString, privacy: .public)")
+        Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) requestStart backendBaseURL=\(BackendConfig.baseURL.absoluteString, privacy: .public)")
 
         // ── 1. Audio file ───────────────────────────────────────────────────────
         let audioData: Data
         do {
             audioData = try Data(contentsOf: audioFileURL)
         } catch {
-            Self.log.error("[Transcription] transcriptionFailureRootCause=fileReadFailed path=\(audioFileURL.path, privacy: .public) error=\(String(describing: error), privacy: .public)")
-            throw MultilingualTranscriptionError.fileReadFailed(underlying: error)
+            Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=fileReadFailed path=\(audioFileURL.path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            throw MultilingualTranscriptionError.fileReadFailed(underlying: error, requestId: requestId)
         }
 
         guard !audioData.isEmpty else {
-            Self.log.error("[Transcription] transcriptionFailureRootCause=fileEmpty path=\(audioFileURL.path, privacy: .public)")
-            throw MultilingualTranscriptionError.fileEmpty
+            Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=fileEmpty path=\(audioFileURL.path, privacy: .public)")
+            throw MultilingualTranscriptionError.fileEmpty(requestId: requestId)
         }
         guard audioData.count > 4096 else {
-            Self.log.error("[Transcription] transcriptionFailureRootCause=fileTooSmall audioBytes=\(audioData.count, privacy: .public) path=\(audioFileURL.path, privacy: .public) — likely empty-container M4A with no audio frames")
-            throw MultilingualTranscriptionError.fileEmpty
+            Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=fileTooSmall audioBytes=\(audioData.count, privacy: .public) path=\(audioFileURL.path, privacy: .public) — likely empty-container M4A with no audio frames")
+            throw MultilingualTranscriptionError.fileEmpty(requestId: requestId)
         }
 
-        Self.log.info("[Transcription] requestStart audioBytes=\(audioData.count, privacy: .public) path=\(audioFileURL.path, privacy: .public)")
+        Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) audioReady audioBytes=\(audioData.count, privacy: .public) path=\(audioFileURL.path, privacy: .public)")
 
         // ── 2. Multipart body ───────────────────────────────────────────────────
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -81,11 +80,12 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        request.setValue(requestId.uuidString, forHTTPHeaderField: BackendCorrelation.requestIDHeaderField)
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
         request.timeoutInterval = 120
 
-        Self.log.info("[Transcription] request mimeType=\(mimeType, privacy: .public) bodyBytes=\(body.count, privacy: .public)")
+        Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) uploading mimeType=\(mimeType, privacy: .public) bodyBytes=\(body.count, privacy: .public)")
 
         // ── 3. Send ───────────────────────────────────────────────────────────────
         let data: Data
@@ -93,23 +93,23 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            Self.log.error("[Transcription] transcriptionFailureRootCause=networkError error=\(String(describing: error), privacy: .public)")
+            Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=networkError error=\(String(describing: error), privacy: .public)")
             if let urlError = error as? URLError {
-                Self.log.error("[Transcription] urlError code=\(urlError.code.rawValue, privacy: .public) — if backend is down, wrong URL, or ATS blocked HTTP, check Console and BackendConfig / Info.plist NSAllowsLocalNetworking")
+                Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) urlError code=\(urlError.code.rawValue, privacy: .public) — if backend is down, wrong URL, or ATS blocked HTTP, check Console and BackendConfig / Info.plist NSAllowsLocalNetworking")
             }
-            throw MultilingualTranscriptionError.networkError(underlying: error)
+            throw MultilingualTranscriptionError.networkError(underlying: error, requestId: requestId)
         }
 
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? -1
         let rawBody = String(data: data, encoding: .utf8) ?? "<non-UTF8 body, \(data.count) bytes>"
 
-        Self.log.info("[Transcription] httpStatus=\(status, privacy: .public) responseBytes=\(data.count, privacy: .public)")
+        Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) httpStatus=\(status, privacy: .public) responseBytes=\(data.count, privacy: .public)")
 
         guard (200...299).contains(status) else {
             let truncatedBody = String(rawBody.prefix(1000))
-            Self.log.error("[Transcription] transcriptionFailureRootCause=http\(status, privacy: .public) responseBody=\(truncatedBody, privacy: .public)")
-            throw MultilingualTranscriptionError.httpError(statusCode: status, body: truncatedBody)
+            Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=http\(status, privacy: .public) responseBody=\(truncatedBody, privacy: .public)")
+            throw MultilingualTranscriptionError.httpError(statusCode: status, body: truncatedBody, requestId: requestId)
         }
 
         // ── 4. Decode `{ "text": "..." }` ───────────────────────────────────────
@@ -122,12 +122,12 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
             decoded = try JSONDecoder().decode(BackendTranscriptionResponse.self, from: data)
         } catch {
             let truncatedBody = String(rawBody.prefix(1000))
-            Self.log.error("[Transcription] transcriptionFailureRootCause=decodingFailed error=\(String(describing: error), privacy: .public) rawBody=\(truncatedBody, privacy: .public)")
-            throw MultilingualTranscriptionError.decodingFailed(underlying: error, rawBody: truncatedBody)
+            Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=decodingFailed error=\(String(describing: error), privacy: .public) rawBody=\(truncatedBody, privacy: .public)")
+            throw MultilingualTranscriptionError.decodingFailed(underlying: error, rawBody: truncatedBody, requestId: requestId)
         }
 
         let text = decoded.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        Self.log.info("[Transcription] requestSucceeded transcriptLength=\(text.count, privacy: .public)")
+        Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) requestSucceeded transcriptLength=\(text.count, privacy: .public)")
         return text
     }
 }
