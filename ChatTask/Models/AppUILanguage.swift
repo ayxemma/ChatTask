@@ -213,6 +213,8 @@ struct AppStrings {
     let voiceTapToSpeak: String
     let voiceListening: String
     let voiceProcessing: String
+    /// Shown when processing has taken a few seconds (e.g. cold backend) — keep wording non-technical.
+    let voiceWakingUpServer: String
     let voiceReady: String
     let voiceError: String
     let voiceStartListening: String
@@ -387,6 +389,7 @@ struct AppStrings {
         voiceTapToSpeak: "Tap the microphone to speak.",
         voiceListening: "Listening… I’ll stop when you finish speaking. Tap to stop anytime.",
         voiceProcessing: "Processing…",
+        voiceWakingUpServer: "Just a moment…",
         voiceReady: "Ready for your next command.",
         voiceError: "Something went wrong — try again.",
         voiceStartListening: "Start listening",
@@ -554,6 +557,7 @@ struct AppStrings {
         voiceTapToSpeak: "点击麦克风开始说话。",
         voiceListening: "正在聆听… 说完后自动停止，也可随时点击停止。",
         voiceProcessing: "处理中…",
+        voiceWakingUpServer: "请稍候…",
         voiceReady: "可以说下一条指令了。",
         voiceError: "出错了，请重试。",
         voiceStartListening: "开始聆听",
@@ -721,6 +725,7 @@ struct AppStrings {
         voiceTapToSpeak: "Toca el micrófono para hablar.",
         voiceListening: "Escuchando… pararé cuando termines de hablar. Toca para detener en cualquier momento.",
         voiceProcessing: "Procesando…",
+        voiceWakingUpServer: "Un momento…",
         voiceReady: "Listo para tu siguiente comando.",
         voiceError: "Algo salió mal — inténtalo de nuevo.",
         voiceStartListening: "Empezar a escuchar",

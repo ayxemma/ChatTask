@@ -29,6 +29,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
 
     /// Reads audio from disk and returns the transcript string from the backend JSON `{ "text": "..." }`.
     func transcribe(audioFileURL: URL) async throws -> String {
+        BackendWarmup.scheduleSessionWarmup() // coalesced with app lifecycle warm-up
         let requestId = UUID()
         let endpoint = BackendConfig.transcribeURL
         Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) requestStart backendBaseURL=\(BackendConfig.baseURL.absoluteString, privacy: .public)")
@@ -91,7 +92,8 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            // `POST /transcribe` not assumed idempotent: no HTTP 502/503 retry; transport errors may retry once.
+            (data, response) = try await BackendFetchRetry.data(for: request, isIdempotent: false)
         } catch {
             Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=networkError error=\(String(describing: error), privacy: .public)")
             if let urlError = error as? URLError {

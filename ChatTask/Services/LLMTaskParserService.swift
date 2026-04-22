@@ -23,6 +23,7 @@ struct LLMTaskParserService: TaskParsing {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "TaskParsing")
 
     func parse(text: String, now: Date, localeIdentifier: String, timeZoneIdentifier: String) async throws -> ParsedCommand {
+        BackendWarmup.scheduleSessionWarmup() // same session API as app lifecycle; coalesced
         let requestId = UUID()
         let endpoint = BackendConfig.parseURL
         Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestStart backendBaseURL=\(BackendConfig.baseURL.absoluteString, privacy: .public)")
@@ -51,7 +52,8 @@ struct LLMTaskParserService: TaskParsing {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            // `POST /parse` is not assumed idempotent: retry only transport `URLError`s, not 502/503 bodies.
+            (data, response) = try await BackendFetchRetry.data(for: request, isIdempotent: false)
         } catch {
             Self.log.error("[Parse] requestId=\(requestId.uuidString, privacy: .public) requestFailed rootCause=networkError error=\(String(describing: error), privacy: .public)")
             if let urlError = error as? URLError {

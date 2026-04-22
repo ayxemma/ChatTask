@@ -36,9 +36,11 @@ private struct AppShellView: View {
     @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
     @AppStorage(AppColorTheme.storageKey) private var themeRaw: String = AppColorTheme.purple.rawValue
     @Environment(SubscriptionManager.self) private var subscriptionManager
+    @Environment(\.scenePhase) private var scenePhase
     @Query private var allTasks: [TaskItem]
 
     @State private var showPaywall = false
+    @State private var didRunRootOnAppearWarmup = false
 
     private var theme: AppColorTheme { AppColorTheme(storageRaw: themeRaw) }
     private var themePalette: AppThemePalette { AppThemePalette.palette(for: theme) }
@@ -60,6 +62,18 @@ private struct AppShellView: View {
             .onChange(of: allTasks.count) { _, newCount in
                 if !showPaywall && subscriptionManager.shouldShowPaywall(taskCount: newCount) {
                     showPaywall = true
+                }
+            }
+            // Backend warm-up: SwiftUI lifecycle (not only `App.init`); `BackendWarmup` deduplicates in-session.
+            .onAppear {
+                if !didRunRootOnAppearWarmup {
+                    didRunRootOnAppearWarmup = true
+                    BackendWarmup.scheduleSessionWarmup()
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    BackendWarmup.scheduleSessionWarmup()
                 }
             }
     }

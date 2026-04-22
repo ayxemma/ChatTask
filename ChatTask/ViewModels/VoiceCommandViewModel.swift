@@ -52,7 +52,16 @@ final class VoiceCommandViewModel {
     // MARK: - Public state (unchanged from previous version)
 
     var chatMessages: [ChatMessage] = []
-    var chatFlowState: VoiceFlowState = .idle
+    var chatFlowState: VoiceFlowState = .idle {
+        didSet {
+            if oldValue == .processing, chatFlowState != .processing {
+                cancelSlowBackendHint()
+            }
+            if chatFlowState == .processing, oldValue != .processing {
+                scheduleSlowBackendHint()
+            }
+        }
+    }
     var chatDraftText: String = ""
     /// Set after voice capture completes. The view observes this and moves it into the text
     /// field so the user can review and edit before sending. Cleared by the view after pickup.
@@ -91,6 +100,11 @@ final class VoiceCommandViewModel {
 
     private var persistenceContext: ModelContext?
     private var silenceTimerTask: Task<Void, Never>?
+    /// Single delayed "slow server" UI hint; cancelled on any processing exit or rescheduling.
+    private var wakeUpHintTask: Task<Void, Never>?
+    private var showSlowBackendHint = false
+    /// Bumps when the hint is invalidated so a delayed task cannot flip UI after state changes.
+    private var processingSlowHintEpoch: UInt = 0
 
     // MARK: - Init
 
@@ -123,7 +137,7 @@ final class VoiceCommandViewModel {
         switch chatFlowState {
         case .idle:       return s.voiceTapToSpeak
         case .listening:  return s.voiceListening
-        case .processing: return s.voiceProcessing
+        case .processing: return showSlowBackendHint ? s.voiceWakingUpServer : s.voiceProcessing
         case .conflictPending, .deletePending, .disambiguating: return ""
         case .success:    return s.voiceReady
         case .error:      return s.voiceError
@@ -200,6 +214,28 @@ final class VoiceCommandViewModel {
     private func cancelMaxRecordingTimer() {
         silenceTimerTask?.cancel()
         silenceTimerTask = nil
+    }
+
+    private func scheduleSlowBackendHint() {
+        wakeUpHintTask?.cancel()
+        wakeUpHintTask = nil
+        showSlowBackendHint = false
+        processingSlowHintEpoch &+= 1
+        let epoch = processingSlowHintEpoch
+        wakeUpHintTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            guard self.processingSlowHintEpoch == epoch else { return }
+            guard self.chatFlowState == .processing else { return }
+            self.showSlowBackendHint = true
+        }
+    }
+
+    private func cancelSlowBackendHint() {
+        wakeUpHintTask?.cancel()
+        wakeUpHintTask = nil
+        showSlowBackendHint = false
+        processingSlowHintEpoch &+= 1
     }
 
     // MARK: - Begin listening

@@ -71,6 +71,7 @@ extension AppStrings {
         voiceTapToSpeak: "बोलने के लिए माइक्रोफ़ोन पर टैप करें।",
         voiceListening: "सुन रहा हूँ… जब आप बोलना समाप्त करेंगे तब रुकूँगा। कभी भी रोकने के लिए टैप करें।",
         voiceProcessing: "प्रोसेसिंग…",
+        voiceWakingUpServer: "कृपया प्रतीक्षा करें…",
         voiceReady: "आपके अगले कमांड के लिए तैयार।",
         voiceError: "कुछ गलत हुआ — पुनः प्रयास करें।",
         voiceStartListening: "सुनना शुरू करें",
