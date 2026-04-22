@@ -55,6 +55,7 @@
 		A10000000000000000000038 /* AppColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000038 /* AppColorTheme.swift */; };
 		A10000000000000000000039 /* BackendWarmup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000039 /* BackendWarmup.swift */; };
 		A1000000000000000000003A /* BackendFetchRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* BackendFetchRetry.swift */; };
+		A1000000000000000000003B /* ShortInputLLMPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003B /* ShortInputLLMPresentation.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -107,6 +108,7 @@
 		A20000000000000000000038 /* AppColorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColorTheme.swift; sourceTree = "<group>"; };
 		A20000000000000000000039 /* BackendWarmup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendWarmup.swift; sourceTree = "<group>"; };
 		A2000000000000000000003A /* BackendFetchRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendFetchRetry.swift; sourceTree = "<group>"; };
+		A2000000000000000000003B /* ShortInputLLMPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortInputLLMPresentation.swift; sourceTree = "<group>"; };
 		A30000000000000000000001 /* ChatTask.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChatTask.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -206,6 +208,7 @@
 				A20000000000000000000036 /* BackendCorrelation.swift */,
 				A20000000000000000000039 /* BackendWarmup.swift */,
 				A2000000000000000000003A /* BackendFetchRetry.swift */,
+				A2000000000000000000003B /* ShortInputLLMPresentation.swift */,
 				A20000000000000000000013 /* DateParser.swift */,
 				A20000000000000000000021 /* TaskScheduleHelpers.swift */,
 			);
@@ -314,6 +317,7 @@
 				A10000000000000000000036 /* BackendCorrelation.swift in Sources */,
 				A10000000000000000000039 /* BackendWarmup.swift in Sources */,
 				A1000000000000000000003A /* BackendFetchRetry.swift in Sources */,
+				A1000000000000000000003B /* ShortInputLLMPresentation.swift in Sources */,
 				A10000000000000000000009 /* SpeechRecognizerService.swift in Sources */,
 				A10000000000000000000010 /* ParsedCommand.swift in Sources */,
 				A10000000000000000000011 /* ReminderItem.swift in Sources */,
@@ -482,7 +486,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 9V25JPKT2U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ChatTask/Info.plist;
@@ -516,7 +520,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 9V25JPKT2U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ChatTask/Info.plist;

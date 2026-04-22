@@ -81,8 +81,9 @@ struct TaskParsingCoordinator {
                     localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
                 )
                 Self.log.info("[TaskParsing] llmParser succeeded=true")
-                Self.logParsedCommand(result, label: "final (llm)")
-                return result
+                let final = Self.applyLLMShortInputOptionB(input: input, result: result)
+                Self.logParsedCommand(final, label: "final (llm)")
+                return final
             } catch {
                 if let le = error as? LLMError {
                     Self.log.error("[TaskParsing] llmParser succeeded=false requestId=\(le.correlationRequestID.uuidString, privacy: .public) error=\(String(describing: error), privacy: .public) — falling back to localParser")
@@ -136,8 +137,9 @@ struct TaskParsingCoordinator {
                     localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
                 )
                 Self.log.info("[TaskParsing] llmParser fallbackSucceeded=true")
-                Self.logParsedCommand(result, label: "final (llm fallback)")
-                return result
+                let final = Self.applyLLMShortInputOptionB(input: input, result: result)
+                Self.logParsedCommand(final, label: "final (llm fallback)")
+                return final
             } catch {
                 if let le = error as? LLMError {
                     Self.log.error("[TaskParsing] llmParser fallbackSucceeded=false requestId=\(le.correlationRequestID.uuidString, privacy: .public) error=\(String(describing: error), privacy: .public)")
@@ -183,6 +185,15 @@ struct TaskParsingCoordinator {
     }
 
     // MARK: - Helpers
+
+    /// Option B: single-pass LLM result unchanged for scheduling; for short inputs, `title` = user phrase, `notes` = nil.
+    private static func applyLLMShortInputOptionB(input: String, result: ParsedCommand) -> ParsedCommand {
+        let out = ShortInputLLMPresentation.applyOptionB(userInput: input, command: result)
+        if out.title != result.title || out.notes != result.notes {
+            log.info("[TaskParsing] shortInput Option B — title/notes presentation adjusted (llm) title=\(out.title, privacy: .public)")
+        }
+        return out
+    }
 
     /// A "weak" local result is one where the parser returned `.unknown` with no date information.
     /// These are prime candidates for LLM improvement.
