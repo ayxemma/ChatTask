@@ -3,6 +3,7 @@ import SwiftUI
 struct RootTabView: View {
     @Environment(\.appUILanguage) private var appUILanguage
     @Environment(\.themePalette) private var themePalette
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
 
     @State private var showChat = false
@@ -61,6 +62,9 @@ struct RootTabView: View {
         .onChange(of: languageRaw) { _, _ in
             chatViewModel.uiLanguage = selectedUILanguage
             Task { await chatViewModel.handleUILanguageChanged() }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            chatViewModel.handleAppScenePhaseChange(newPhase)
         }
     }
 }

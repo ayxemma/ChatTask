@@ -14,6 +14,8 @@ struct ChatSheetView: View {
     /// Text the user is currently composing in the input field.
     @State private var typedText: String = ""
     @FocusState private var isTextFieldFocused: Bool
+    /// Throttles keyboard-driven warm-up spam when the OS sends many notifications.
+    @State private var lastKeyboardWarmUpAt: Date = .distantPast
 
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "ChatSheet")
     private var strings: AppStrings { appUILanguage.strings }
@@ -70,6 +72,9 @@ struct ChatSheetView: View {
                 Task { await viewModel.handleUILanguageChanged() }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                let now = Date()
+                guard now.timeIntervalSince(lastKeyboardWarmUpAt) > 0.35 else { return }
+                lastKeyboardWarmUpAt = now
                 BackendWarmup.scheduleSessionWarmup()
             }
             // When voice capture produces a transcript, move it into the text field

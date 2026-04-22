@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import SwiftData
+import SwiftUI
 
 // MARK: - Chat types (unchanged)
 
@@ -108,6 +109,10 @@ final class VoiceCommandViewModel {
     private var showExtendedThinkingStatus = false
     /// Bumps when the hint is invalidated so a delayed task cannot flip UI after state changes.
     private var processingSlowHintEpoch: UInt = 0
+    /// Invalidates the 800ms “Thinking…” timer when processing ends or is rescheduled.
+    private var thinkingStatusEpoch: UInt = 0
+    /// Bumps when a stream is superseded/cancelled so only the latest stream may mutate bubbles.
+    private var streamEpoch: UInt = 0
     private var streamRevealTask: Task<Void, Never>?
     /// When set, the next assistant reply should fill this bubble (or append if not found).
     private var pendingAssistantSlotId: UUID?
@@ -237,9 +242,12 @@ final class VoiceCommandViewModel {
     private func scheduleExtendedThinkingStatus() {
         thinkingStatusTask?.cancel()
         showExtendedThinkingStatus = false
+        thinkingStatusEpoch &+= 1
+        let epoch = thinkingStatusEpoch
         thinkingStatusTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
             guard let self, !Task.isCancelled else { return }
+            guard self.thinkingStatusEpoch == epoch else { return }
             guard self.chatFlowState == .processing else { return }
             self.showExtendedThinkingStatus = true
         }
@@ -261,6 +269,7 @@ final class VoiceCommandViewModel {
     }
 
     private func cancelAllProcessingStatusHints() {
+        thinkingStatusEpoch &+= 1
         thinkingStatusTask?.cancel()
         thinkingStatusTask = nil
         showExtendedThinkingStatus = false
@@ -273,12 +282,25 @@ final class VoiceCommandViewModel {
     private func cancelStreamReveal() {
         streamRevealTask?.cancel()
         streamRevealTask = nil
+        // Bump so in-flight stream loops see streamEpoch != myToken and stop without calling onComplete.
+        streamEpoch &+= 1
+    }
+
+    /// Cancels delayed caption timers while inactive; restarts them when returning to `active` during an in-flight request.
+    func handleAppScenePhaseChange(_ phase: ScenePhase) {
+        if phase == .background || phase == .inactive {
+            cancelAllProcessingStatusHints()
+        } else if phase == .active, chatFlowState == .processing {
+            scheduleProcessingStatusSequence()
+        }
     }
 
     // MARK: - Assistant text reveal (perception; does not change backend)
 
     private func startStreamingText(into id: UUID, fullText: String, onComplete: @escaping () -> Void) {
         cancelStreamReveal()
+        // Token captured after cancel: superseded streams retain an older token and must not update UI.
+        let myToken = streamEpoch
         if fullText.isEmpty {
             if let idx = chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
                 chatMessages[idx].text = ""
@@ -286,26 +308,26 @@ final class VoiceCommandViewModel {
             onComplete()
             return
         }
-        let chunkSize = 4
-        let delayNs: UInt64 = 32_000_000
+        let charCount = fullText.count
+        let instantReveal = charCount <= 8
+        let chunkSize = instantReveal ? charCount : min(4, charCount)
+        let delayNs: UInt64 = instantReveal ? 0 : 32_000_000
         streamRevealTask = Task { @MainActor [weak self] in
             let chars = Array(fullText)
             var offset = 0
             while offset < chars.count {
-                if Task.isCancelled {
-                    if let s = self, let idx = s.chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
-                        s.chatMessages[idx].text = fullText
-                    }
-                    onComplete()
-                    return
-                }
+                if Task.isCancelled { return }
+                guard let s = self else { return }
+                guard s.streamEpoch == myToken else { return }
                 let end = min(offset + chunkSize, chars.count)
                 offset = end
-                if let s = self, let idx = s.chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
+                if let idx = s.chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
                     s.chatMessages[idx].text = String(chars[0..<offset])
                 }
-                try? await Task.sleep(nanoseconds: delayNs)
+                if offset >= chars.count { break }
+                if delayNs > 0 { try? await Task.sleep(nanoseconds: delayNs) }
             }
+            guard let s = self, !Task.isCancelled, s.streamEpoch == myToken else { return }
             onComplete()
         }
     }
@@ -317,7 +339,7 @@ final class VoiceCommandViewModel {
     /// Inserts or replaces the pending assistant slot, optionally with a streaming “typing” reveal.
     private func emitAssistantResponse(_ text: String, nextState: VoiceFlowState, stream: Bool) {
         if stream, !text.isEmpty {
-            if let slot = pendingAssistantSlotId, let idx = chatMessages.firstIndex(where: { $0.id == slot && $0.role == .assistant }) {
+            if let slot = pendingAssistantSlotId, chatMessages.contains(where: { $0.id == slot && $0.role == .assistant }) {
                 pendingAssistantSlotId = nil
                 startStreamingText(into: slot, fullText: text) { [weak self] in
                     self?.chatFlowState = nextState
@@ -330,6 +352,8 @@ final class VoiceCommandViewModel {
                 }
             }
         } else {
+            // Non-stream path replaces the bubble in one step; must invalidate any in-progress stream first.
+            cancelStreamReveal()
             if let slot = pendingAssistantSlotId, let idx = chatMessages.firstIndex(where: { $0.id == slot && $0.role == .assistant }) {
                 pendingAssistantSlotId = nil
                 chatMessages[idx].text = text
