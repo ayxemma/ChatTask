@@ -1,5 +1,6 @@
 import os.log
 import SwiftUI
+import UIKit
 
 struct ChatSheetView: View {
     @Bindable var viewModel: VoiceCommandViewModel
@@ -42,6 +43,7 @@ struct ChatSheetView: View {
             .onAppear {
                 viewModel.attachPersistence(modelContext)
                 viewModel.uiLanguage = appUILanguage
+                BackendWarmup.scheduleSessionWarmup()
                 Self.log.info("[ChatSheet] chatAutoStart — sheet opened, beginning recording")
                 Task { await viewModel.chatBeginListening() }
             }
@@ -66,6 +68,9 @@ struct ChatSheetView: View {
             .onChange(of: appUILanguage) { _, newValue in
                 viewModel.uiLanguage = newValue
                 Task { await viewModel.handleUILanguageChanged() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                BackendWarmup.scheduleSessionWarmup()
             }
             // When voice capture produces a transcript, move it into the text field
             // so the user can review and edit before tapping send.
@@ -122,6 +127,8 @@ struct ChatSheetView: View {
                     Text(viewModel.chatStatusDescription)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut(duration: 0.35), value: viewModel.chatStatusDescription)
                     Spacer()
                 }
             }
@@ -156,6 +163,9 @@ struct ChatSheetView: View {
                 .onSubmit { submitTypedText() }
                 .disabled(viewModel.chatFlowState == .processing)
                 .onChange(of: isTextFieldFocused) { _, focused in
+                    if focused {
+                        BackendWarmup.scheduleSessionWarmup()
+                    }
                     // When the user taps into the text field while recording, cancel the
                     // recording session so they can type freely without noisy audio.
                     if focused, viewModel.chatFlowState == .listening {
@@ -307,11 +317,19 @@ struct ChatSheetView: View {
         return HStack {
             if isUser { Spacer(minLength: 48) }
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                Text(message.text)
-                    .font(.body)
-                    .foregroundStyle(isUser ? p.userBubbleForeground : p.textPrimary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                Group {
+                    if !isUser, message.text.isEmpty {
+                        ChatTypingIndicatorView(foreground: p.textPrimary.opacity(0.7))
+                    } else {
+                        Text(message.text)
+                            .font(.body)
+                            .foregroundStyle(isUser ? p.userBubbleForeground : p.textPrimary)
+                    }
+                }
+                .font(.body)
+                .frame(minHeight: 22, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
                     .background {
                         if isUser {
                             Group {
@@ -337,6 +355,28 @@ struct ChatSheetView: View {
                     .foregroundStyle(p.textSecondary.opacity(0.85))
             }
             if !isUser { Spacer(minLength: 48) }
+        }
+    }
+}
+
+// MARK: - Subtle “typing” indicator (empty assistant placeholder)
+
+private struct ChatTypingIndicatorView: View {
+    @State private var phase = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var foreground: Color = .secondary
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(foreground)
+                    .frame(width: 6, height: 6)
+                    .opacity(phase == i % 3 ? 1.0 : 0.3)
+            }
+        }
+        .onReceive(Timer.publish(every: 0.32, on: .main, in: .common).autoconnect()) { _ in
+            guard !reduceMotion else { return }
+            phase = (phase + 1) % 3
         }
     }
 }

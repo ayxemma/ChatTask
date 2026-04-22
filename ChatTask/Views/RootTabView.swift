@@ -42,7 +42,10 @@ struct RootTabView: View {
             // the scene size and real bottom safe inset.
             if selectedTab == HomeTab.home.rawValue {
                 DraggableChatButton(
-                    onTap: { showChat = true },
+                    onTap: {
+                        BackendWarmup.scheduleSessionWarmup()
+                        showChat = true
+                    },
                     accessibilityLabel: s.openCommandChat
                 )
             }

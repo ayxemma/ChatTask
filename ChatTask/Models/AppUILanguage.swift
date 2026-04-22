@@ -215,6 +215,8 @@ struct AppStrings {
     let voiceProcessing: String
     /// Shown when processing has taken a few seconds (e.g. cold backend) — keep wording non-technical.
     let voiceWakingUpServer: String
+    /// Status line after ~800ms of processing (before “waking up server” at ~3s).
+    let chatAssistantThinking: String
     let voiceReady: String
     let voiceError: String
     let voiceStartListening: String
@@ -390,6 +392,7 @@ struct AppStrings {
         voiceListening: "Listening… I’ll stop when you finish speaking. Tap to stop anytime.",
         voiceProcessing: "Processing…",
         voiceWakingUpServer: "Just a moment…",
+        chatAssistantThinking: "Thinking…",
         voiceReady: "Ready for your next command.",
         voiceError: "Something went wrong — try again.",
         voiceStartListening: "Start listening",
@@ -558,6 +561,7 @@ struct AppStrings {
         voiceListening: "正在聆听… 说完后自动停止，也可随时点击停止。",
         voiceProcessing: "处理中…",
         voiceWakingUpServer: "请稍候…",
+        chatAssistantThinking: "思考中…",
         voiceReady: "可以说下一条指令了。",
         voiceError: "出错了，请重试。",
         voiceStartListening: "开始聆听",
@@ -726,6 +730,7 @@ struct AppStrings {
         voiceListening: "Escuchando… pararé cuando termines de hablar. Toca para detener en cualquier momento.",
         voiceProcessing: "Procesando…",
         voiceWakingUpServer: "Un momento…",
+        chatAssistantThinking: "Pensando…",
         voiceReady: "Listo para tu siguiente comando.",
         voiceError: "Algo salió mal — inténtalo de nuevo.",
         voiceStartListening: "Empezar a escuchar",

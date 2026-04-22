@@ -12,7 +12,7 @@ enum ChatMessageRole: String, Equatable {
 struct ChatMessage: Identifiable, Equatable {
     let id: UUID
     let role: ChatMessageRole
-    let text: String
+    var text: String
     let timestamp: Date
 
     init(id: UUID = UUID(), role: ChatMessageRole, text: String, timestamp: Date = .now) {
@@ -55,10 +55,11 @@ final class VoiceCommandViewModel {
     var chatFlowState: VoiceFlowState = .idle {
         didSet {
             if oldValue == .processing, chatFlowState != .processing {
-                cancelSlowBackendHint()
+                cancelAllProcessingStatusHints()
+                cancelStreamReveal()
             }
             if chatFlowState == .processing, oldValue != .processing {
-                scheduleSlowBackendHint()
+                scheduleProcessingStatusSequence()
             }
         }
     }
@@ -103,8 +104,13 @@ final class VoiceCommandViewModel {
     /// Single delayed "slow server" UI hint; cancelled on any processing exit or rescheduling.
     private var wakeUpHintTask: Task<Void, Never>?
     private var showSlowBackendHint = false
+    private var thinkingStatusTask: Task<Void, Never>?
+    private var showExtendedThinkingStatus = false
     /// Bumps when the hint is invalidated so a delayed task cannot flip UI after state changes.
     private var processingSlowHintEpoch: UInt = 0
+    private var streamRevealTask: Task<Void, Never>?
+    /// When set, the next assistant reply should fill this bubble (or append if not found).
+    private var pendingAssistantSlotId: UUID?
 
     // MARK: - Init
 
@@ -137,7 +143,10 @@ final class VoiceCommandViewModel {
         switch chatFlowState {
         case .idle:       return s.voiceTapToSpeak
         case .listening:  return s.voiceListening
-        case .processing: return showSlowBackendHint ? s.voiceWakingUpServer : s.voiceProcessing
+        case .processing:
+            if showSlowBackendHint { return s.voiceWakingUpServer }
+            if showExtendedThinkingStatus { return s.chatAssistantThinking }
+            return s.voiceProcessing
         case .conflictPending, .deletePending, .disambiguating: return ""
         case .success:    return s.voiceReady
         case .error:      return s.voiceError
@@ -163,10 +172,14 @@ final class VoiceCommandViewModel {
         guard chatFlowState == .idle || chatFlowState == .success || chatFlowState == .error else { return }
 
         Self.log.info("[VoiceChat] typedTextSubmit text=\(trimmed, privacy: .public)")
-        chatFlowState = .processing
-        // Typed text is already final — go straight to parse, using the local-first strategy.
-        parsingCoordinator.strategy = .localFirst
+        // Perception: user bubble + empty assistant row immediately, then non-blocking warm-up, then work.
         chatMessages.append(ChatMessage(role: .user, text: trimmed))
+        let slotId = UUID()
+        chatMessages.append(ChatMessage(id: slotId, role: .assistant, text: ""))
+        pendingAssistantSlotId = slotId
+        chatFlowState = .processing
+        parsingCoordinator.strategy = .localFirst
+        BackendWarmup.scheduleSessionWarmup()
         await applyChatParse(transcript: trimmed)
     }
 
@@ -216,6 +229,22 @@ final class VoiceCommandViewModel {
         silenceTimerTask = nil
     }
 
+    private func scheduleProcessingStatusSequence() {
+        scheduleExtendedThinkingStatus()
+        scheduleSlowBackendHint()
+    }
+
+    private func scheduleExtendedThinkingStatus() {
+        thinkingStatusTask?.cancel()
+        showExtendedThinkingStatus = false
+        thinkingStatusTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard let self, !Task.isCancelled else { return }
+            guard self.chatFlowState == .processing else { return }
+            self.showExtendedThinkingStatus = true
+        }
+    }
+
     private func scheduleSlowBackendHint() {
         wakeUpHintTask?.cancel()
         wakeUpHintTask = nil
@@ -231,11 +260,103 @@ final class VoiceCommandViewModel {
         }
     }
 
-    private func cancelSlowBackendHint() {
+    private func cancelAllProcessingStatusHints() {
+        thinkingStatusTask?.cancel()
+        thinkingStatusTask = nil
+        showExtendedThinkingStatus = false
         wakeUpHintTask?.cancel()
         wakeUpHintTask = nil
         showSlowBackendHint = false
         processingSlowHintEpoch &+= 1
+    }
+
+    private func cancelStreamReveal() {
+        streamRevealTask?.cancel()
+        streamRevealTask = nil
+    }
+
+    // MARK: - Assistant text reveal (perception; does not change backend)
+
+    private func startStreamingText(into id: UUID, fullText: String, onComplete: @escaping () -> Void) {
+        cancelStreamReveal()
+        if fullText.isEmpty {
+            if let idx = chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
+                chatMessages[idx].text = ""
+            }
+            onComplete()
+            return
+        }
+        let chunkSize = 4
+        let delayNs: UInt64 = 32_000_000
+        streamRevealTask = Task { @MainActor [weak self] in
+            let chars = Array(fullText)
+            var offset = 0
+            while offset < chars.count {
+                if Task.isCancelled {
+                    if let s = self, let idx = s.chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
+                        s.chatMessages[idx].text = fullText
+                    }
+                    onComplete()
+                    return
+                }
+                let end = min(offset + chunkSize, chars.count)
+                offset = end
+                if let s = self, let idx = s.chatMessages.firstIndex(where: { $0.id == id && $0.role == .assistant }) {
+                    s.chatMessages[idx].text = String(chars[0..<offset])
+                }
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+            onComplete()
+        }
+    }
+
+    private func removeChatMessage(id: UUID) {
+        chatMessages.removeAll { $0.id == id }
+    }
+
+    /// Inserts or replaces the pending assistant slot, optionally with a streaming “typing” reveal.
+    private func emitAssistantResponse(_ text: String, nextState: VoiceFlowState, stream: Bool) {
+        if stream, !text.isEmpty {
+            if let slot = pendingAssistantSlotId, let idx = chatMessages.firstIndex(where: { $0.id == slot && $0.role == .assistant }) {
+                pendingAssistantSlotId = nil
+                startStreamingText(into: slot, fullText: text) { [weak self] in
+                    self?.chatFlowState = nextState
+                }
+            } else {
+                let slot = UUID()
+                chatMessages.append(ChatMessage(id: slot, role: .assistant, text: ""))
+                startStreamingText(into: slot, fullText: text) { [weak self] in
+                    self?.chatFlowState = nextState
+                }
+            }
+        } else {
+            if let slot = pendingAssistantSlotId, let idx = chatMessages.firstIndex(where: { $0.id == slot && $0.role == .assistant }) {
+                pendingAssistantSlotId = nil
+                chatMessages[idx].text = text
+            } else {
+                chatMessages.append(ChatMessage(role: .assistant, text: text))
+            }
+            chatFlowState = nextState
+        }
+    }
+
+    private func streamTranscriptionThenDeliverToField(_ full: String) {
+        guard let slot = pendingAssistantSlotId else {
+            deliverTranscriptToInputField(full)
+            return
+        }
+        if full.isEmpty {
+            removeChatMessage(id: slot)
+            pendingAssistantSlotId = nil
+            deliverTranscriptToInputField(full)
+            return
+        }
+        startStreamingText(into: slot, fullText: full) { [weak self] in
+            guard let self else { return }
+            self.removeChatMessage(id: slot)
+            self.pendingAssistantSlotId = nil
+            self.deliverTranscriptToInputField(full)
+        }
     }
 
     // MARK: - Begin listening
@@ -255,8 +376,7 @@ final class VoiceCommandViewModel {
         // Request both microphone + speech recognition permissions.
         // Speech recognition denial degrades to audio-only — not a fatal error.
         if let err = await speechService.requestAuthorizationIfNeeded(messages: msgs) {
-            chatMessages.append(ChatMessage(role: .assistant, text: err))
-            chatFlowState = .error
+            emitAssistantResponse(err, nextState: .error, stream: false)
             return
         }
 
@@ -273,8 +393,7 @@ final class VoiceCommandViewModel {
         )
 
         if let startError {
-            chatMessages.append(ChatMessage(role: .assistant, text: startError))
-            chatFlowState = .error
+            emitAssistantResponse(startError, nextState: .error, stream: false)
             return
         }
 
@@ -318,9 +437,8 @@ final class VoiceCommandViewModel {
         } else {
             userMsg = localizedStopFailure(error, speechMsgs: speechMsgs)
         }
-        chatMessages.append(ChatMessage(role: .assistant, text: userMsg))
+        emitAssistantResponse(userMsg, nextState: .error, stream: false)
         parsedCommand = nil
-        chatFlowState = .error
     }
 
     // MARK: - Local speech result handler
@@ -352,8 +470,7 @@ final class VoiceCommandViewModel {
 
         case .fallbackToCloud:
             guard let audioURL = captureResult.audioURL else {
-                chatMessages.append(ChatMessage(role: .assistant, text: strings.chatErrorNothingRecorded))
-                chatFlowState = .error
+                emitAssistantResponse(strings.chatErrorNothingRecorded, nextState: .error, stream: false)
                 return
             }
             Self.log.info("[VoiceChat] routingDecision=fallbackToCloud — uploading audio")
@@ -365,6 +482,10 @@ final class VoiceCommandViewModel {
 
     private func handleCloudFallback(audioURL: URL, strings: AppStrings) async {
         defer { deleteAudioFile(audioURL) }
+
+        let cloudSlot = UUID()
+        chatMessages.append(ChatMessage(id: cloudSlot, role: .assistant, text: ""))
+        pendingAssistantSlotId = cloudSlot
 
         let transcript: String
         do {
@@ -404,13 +525,12 @@ final class VoiceCommandViewModel {
                 userMessage = strings.chatErrorSomethingWentWrong
             }
             Self.log.error("[VoiceChat] cloudTranscriptionFailure requestId=\(requestIdForLog, privacy: .public) rootCause=\(rootCause, privacy: .public)")
-            chatMessages.append(ChatMessage(role: .assistant, text: userMessage))
+            emitAssistantResponse(userMessage, nextState: .error, stream: false)
             parsedCommand = nil
-            chatFlowState = .error
             return
         }
 
-        deliverTranscriptToInputField(transcript)
+        streamTranscriptionThenDeliverToField(transcript)
     }
 
     // MARK: - Transcript → input field delivery
@@ -421,8 +541,7 @@ final class VoiceCommandViewModel {
     private func deliverTranscriptToInputField(_ rawTranscript: String) {
         let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            chatMessages.append(ChatMessage(role: .assistant, text: uiLanguage.strings.chatEmptyTranscript))
-            chatFlowState = .error
+            emitAssistantResponse(uiLanguage.strings.chatEmptyTranscript, nextState: .error, stream: false)
             return
         }
         Self.log.info("[VoiceChat] transcriptDeliveredToInputField=\(trimmed, privacy: .public)")
@@ -495,8 +614,7 @@ final class VoiceCommandViewModel {
               warning=\(warning)
             """)
             pendingConflictCommand = command
-            chatMessages.append(ChatMessage(role: .assistant, text: warning))
-            chatFlowState = .conflictPending
+            emitAssistantResponse(warning, nextState: .conflictPending, stream: true)
             return
         }
 
@@ -510,8 +628,7 @@ final class VoiceCommandViewModel {
         switch resolveTargetTask(near: command.targetDate) {
         case .notFound:
             Self.log.info("[VoiceChat] deleteIntent — no task found near targetDate=\(String(describing: command.targetDate), privacy: .public)")
-            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
-            chatFlowState = .error
+            emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
         case .ambiguous(let matches):
             Self.log.info("[VoiceChat] deleteIntent — ambiguous matchCount=\(matches.count, privacy: .public)")
             enterDisambiguation(matches: matches, editType: .delete, strings: s)
@@ -526,21 +643,18 @@ final class VoiceCommandViewModel {
         switch resolveTargetTask(near: command.targetDate) {
         case .notFound:
             Self.log.info("[VoiceChat] rescheduleIntent — no task found")
-            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
-            chatFlowState = .error
+            emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
         case .ambiguous(let matches):
             Self.log.info("[VoiceChat] rescheduleIntent — ambiguous matchCount=\(matches.count, privacy: .public)")
             guard let newDate = command.newScheduledDate else {
-                chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
-                chatFlowState = .error
+                emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
                 return
             }
             enterDisambiguation(matches: matches, editType: .reschedule(newDate: newDate), strings: s)
         case .found(let task):
             guard let newDate = command.newScheduledDate else {
                 Self.log.warning("[VoiceChat] rescheduleIntent — newScheduledDate is nil")
-                chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
-                chatFlowState = .error
+                emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
                 return
             }
             applyReschedule(task: task, newDate: newDate, strings: s)
@@ -551,15 +665,13 @@ final class VoiceCommandViewModel {
         let s = uiLanguage.strings
         let text = command.appendText ?? command.title
         guard !text.isEmpty else {
-            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
-            chatFlowState = .error
+            emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
             return
         }
         switch resolveTargetTask(near: command.targetDate) {
         case .notFound:
             Self.log.info("[VoiceChat] appendIntent — no task found")
-            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditNoTaskFound))
-            chatFlowState = .error
+            emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
         case .ambiguous(let matches):
             Self.log.info("[VoiceChat] appendIntent — ambiguous matchCount=\(matches.count, privacy: .public)")
             enterDisambiguation(matches: matches, editType: .appendNote(text: text), strings: s)
@@ -574,16 +686,13 @@ final class VoiceCommandViewModel {
 
     private func enterDisambiguation(matches: [TaskItem], editType: PendingEditType, strings s: AppStrings) {
         if matches.count > Self.disambiguationLimit {
-            chatMessages.append(ChatMessage(role: .assistant, text: s.chatEditAmbiguousTask))
-            chatFlowState = .error
+            emitAssistantResponse(s.chatEditAmbiguousTask, nextState: .error, stream: false)
             return
         }
         Self.log.info("[VoiceChat] enterDisambiguation count=\(matches.count, privacy: .public)")
         disambiguationCandidates = matches
         pendingEditAction = PendingEditAction(type: editType)
-        chatMessages.append(ChatMessage(role: .assistant,
-                                        text: String(format: s.chatDisambiguateSelect, matches.count)))
-        chatFlowState = .disambiguating
+        emitAssistantResponse(String(format: s.chatDisambiguateSelect, matches.count), nextState: .disambiguating, stream: true)
     }
 
     func chatSelectCandidate(_ task: TaskItem) {
@@ -607,8 +716,7 @@ final class VoiceCommandViewModel {
     private func enterDeleteConfirmation(for task: TaskItem, strings s: AppStrings) {
         pendingDeleteTask = task
         let prompt = String(format: s.chatDeletePrompt, task.title)
-        chatMessages.append(ChatMessage(role: .assistant, text: prompt))
-        chatFlowState = .deletePending
+        emitAssistantResponse(prompt, nextState: .deletePending, stream: true)
     }
 
     private func applyReschedule(task: TaskItem, newDate: Date, strings s: AppStrings) {
@@ -617,9 +725,8 @@ final class VoiceCommandViewModel {
         task.updatedAt = Date()
         try? persistenceContext?.save()
         let timeStr = shortTimeFormatter.string(from: newDate)
-        chatMessages.append(ChatMessage(role: .assistant,
-                                        text: String(format: s.chatRescheduleSuccess, task.title, timeStr)))
-        chatFlowState = .success
+        let msg = String(format: s.chatRescheduleSuccess, task.title, timeStr)
+        emitAssistantResponse(msg, nextState: .success, stream: true)
     }
 
     private func applyAppend(task: TaskItem, text: String, strings s: AppStrings) {
@@ -631,9 +738,7 @@ final class VoiceCommandViewModel {
         }
         task.updatedAt = Date()
         try? persistenceContext?.save()
-        chatMessages.append(ChatMessage(role: .assistant,
-                                        text: String(format: s.chatAppendSuccess, task.title)))
-        chatFlowState = .success
+        emitAssistantResponse(String(format: s.chatAppendSuccess, task.title), nextState: .success, stream: true)
     }
 
     // MARK: - Delete confirmation (unchanged)
@@ -648,15 +753,12 @@ final class VoiceCommandViewModel {
             ctx.delete(task)
             try? ctx.save()
         }
-        chatMessages.append(ChatMessage(role: .assistant,
-                                        text: String(format: uiLanguage.strings.chatDeleteSuccess, title)))
-        chatFlowState = .success
+        emitAssistantResponse(String(format: uiLanguage.strings.chatDeleteSuccess, title), nextState: .success, stream: true)
     }
 
     func chatCancelDelete() {
         pendingDeleteTask = nil
-        chatMessages.append(ChatMessage(role: .assistant, text: uiLanguage.strings.chatDeleteCanceled))
-        chatFlowState = .error
+        emitAssistantResponse(uiLanguage.strings.chatDeleteCanceled, nextState: .error, stream: false)
     }
 
     // MARK: - Conflict confirmation (unchanged)
@@ -669,8 +771,7 @@ final class VoiceCommandViewModel {
 
     func chatCancelConflict() {
         pendingConflictCommand = nil
-        chatMessages.append(ChatMessage(role: .assistant, text: uiLanguage.strings.chatConflictCanceled))
-        chatFlowState = .error
+        emitAssistantResponse(uiLanguage.strings.chatConflictCanceled, nextState: .error, stream: false)
     }
 
     // MARK: - Task resolution (unchanged)
@@ -704,7 +805,6 @@ final class VoiceCommandViewModel {
 
     private func commitSave(command: ParsedCommand) {
         let reply = confirmationMessage(for: command, userTranscript: command.originalText)
-        chatMessages.append(ChatMessage(role: .assistant, text: reply))
         if let ctx = persistenceContext {
             let resolvedDate = command.reminderDate ?? command.startDate
             print("""
@@ -721,7 +821,7 @@ final class VoiceCommandViewModel {
                 actionType=\(String(describing: command.actionType), privacy: .public)
                 """)
         }
-        chatFlowState = .success
+        emitAssistantResponse(reply, nextState: .success, stream: true)
     }
 
     /// Returns the first incomplete task whose scheduled time falls on the same
@@ -775,6 +875,10 @@ final class VoiceCommandViewModel {
         speechService.onPartialTranscript = nil
         await speechService.cancelForReset()
         cancelMaxRecordingTimer()
+        cancelAllProcessingStatusHints()
+        cancelStreamReveal()
+        pendingAssistantSlotId = nil
+        showExtendedThinkingStatus = false
         chatFlowState = .idle
         chatDraftText = ""
         pendingVoiceTranscript = ""

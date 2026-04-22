@@ -41,6 +41,7 @@ private struct AppShellView: View {
 
     @State private var showPaywall = false
     @State private var didRunRootOnAppearWarmup = false
+    @State private var idlePreWarmTask: Task<Void, Never>?
 
     private var theme: AppColorTheme { AppColorTheme(storageRaw: themeRaw) }
     private var themePalette: AppThemePalette { AppThemePalette.palette(for: theme) }
@@ -74,6 +75,15 @@ private struct AppShellView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     BackendWarmup.scheduleSessionWarmup()
+                    idlePreWarmTask?.cancel()
+                    idlePreWarmTask = Task(priority: .utility) {
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        guard !Task.isCancelled else { return }
+                        BackendWarmup.scheduleSessionWarmup()
+                    }
+                } else {
+                    idlePreWarmTask?.cancel()
+                    idlePreWarmTask = nil
                 }
             }
     }
