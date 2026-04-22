@@ -18,7 +18,7 @@ extension LLMError {
 }
 
 /// Parses natural-language task commands via the ChatTask backend `POST /parse` endpoint.
-/// The server returns JSON matching `LLMTaskParseResponse` (same shape as the former OpenAI inner JSON).
+/// The server returns JSON decodable as `LLMTaskParseResponse` (stable app contract; not exposed to views).
 struct LLMTaskParserService: TaskParsing {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "TaskParsing")
 
