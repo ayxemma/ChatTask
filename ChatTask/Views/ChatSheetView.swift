@@ -10,7 +10,6 @@ struct ChatSheetView: View {
     @Environment(\.locale) private var locale
     @Environment(\.modelContext) private var modelContext
 
-    @State private var autoDismissTask: Task<Void, Never>?
     /// Text the user is currently composing in the input field.
     @State private var typedText: String = ""
     @FocusState private var isTextFieldFocused: Bool
@@ -50,21 +49,9 @@ struct ChatSheetView: View {
                 Task { await viewModel.chatBeginListening() }
             }
             .onDisappear {
-                autoDismissTask?.cancel()
-                autoDismissTask = nil
                 Task {
                     await viewModel.prepareForNewSession()
                     Self.log.info("[ChatSheet] chatDismissComplete — recorder released, state reset")
-                }
-            }
-            .onChange(of: viewModel.chatFlowState) { _, newState in
-                guard newState == .success else { return }
-                autoDismissTask?.cancel()
-                autoDismissTask = Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    guard !Task.isCancelled else { return }
-                    Self.log.info("[ChatSheet] autoDismiss triggered — task saved, closing sheet")
-                    dismiss()
                 }
             }
             .onChange(of: appUILanguage) { _, newValue in

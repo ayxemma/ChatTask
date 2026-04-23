@@ -122,6 +122,8 @@ extension AppStrings {
         chatDeleteCanceled: "ठीक है, रखा गया।",
         chatRescheduleSuccess: "हो गया — \"%@\" को %@ पर ले जाया गया।",
         chatAppendSuccess: "\"%@\" में नोट जोड़ा गया।",
+        chatFollowUpHint: "आप इस कार्य में बदलाव जारी रख सकते हैं।",
+        chatRenameSuccess: "\"%@\" नाम बदल दिया गया।",
         chatTextInputPlaceholder: "कार्य टाइप करें या बोलें\u{2026}",
         reminderLabel: "अनुस्मारक",
         reminderDefaultLabel: "डिफ़ॉल्ट अनुस्मारक",

@@ -29,7 +29,8 @@ struct LocalTranscriptEvaluator {
             text: trimmed,
             now: now,
             localeIdentifier: localeIdentifier,
-            timeZoneIdentifier: timeZoneIdentifier
+            timeZoneIdentifier: timeZoneIdentifier,
+            activeTaskContext: nil
         )
     }
 }

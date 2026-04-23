@@ -53,7 +53,7 @@ struct IntentParserService {
             reminderDate = date
         case .calendarEvent:
             startDate = date
-        case .unknown, .deleteTask, .rescheduleTask, .appendToTask:
+        case .unknown, .deleteTask, .rescheduleTask, .appendToTask, .updateTaskTitle:
             break
         }
 

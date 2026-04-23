@@ -18,6 +18,8 @@ struct LLMTaskParseResponse: Decodable {
     let newScheduledAt: String?
     /// Text to append to the existing task's notes (appendToTask only).
     let appendText: String?
+    /// New title (updateTaskTitle only).
+    let newTitle: String?
 
     enum CodingKeys: String, CodingKey {
         case title, notes, confidence
@@ -29,5 +31,6 @@ struct LLMTaskParseResponse: Decodable {
         case targetTime     = "target_time"
         case newScheduledAt = "new_scheduled_at"
         case appendText     = "append_text"
+        case newTitle       = "new_title"
     }
 }

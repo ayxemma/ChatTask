@@ -38,7 +38,8 @@ struct TaskParsingCoordinator {
         text: String,
         now: Date,
         localeIdentifier: String,
-        timeZoneIdentifier: String
+        timeZoneIdentifier: String,
+        activeTaskContext: ChatActiveTaskContext? = nil
     ) async -> ParsedCommand {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let input = trimmed.isEmpty ? text : trimmed
@@ -52,11 +53,22 @@ struct TaskParsingCoordinator {
             return Self.fallbackUnknown(text: text, localeIdentifier: localeIdentifier)
         }
 
+        // Chat follow-ups: disambiguation lives on the backend — skip local-first when we have active task context.
+        if activeTaskContext != nil {
+            Self.log.info("[TaskParsing] activeTaskContext set — using llmFirst for follow-up")
+            return await parseLLMFirst(
+                input: input, text: text, now: now,
+                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier,
+                activeTaskContext: activeTaskContext
+            )
+        }
+
         switch strategy {
         case .llmFirst:
             return await parseLLMFirst(
                 input: input, text: text, now: now,
-                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
+                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier,
+                activeTaskContext: nil
             )
         case .localFirst:
             return await parseLocalFirst(
@@ -70,7 +82,8 @@ struct TaskParsingCoordinator {
 
     private func parseLLMFirst(
         input: String, text: String, now: Date,
-        localeIdentifier: String, timeZoneIdentifier: String
+        localeIdentifier: String, timeZoneIdentifier: String,
+        activeTaskContext: ChatActiveTaskContext?
     ) async -> ParsedCommand {
         // ── 1. LLM (primary) ─────────────────────────────────────────────────
         if let llm = llmParser {
@@ -78,7 +91,8 @@ struct TaskParsingCoordinator {
             do {
                 let result = try await llm.parse(
                     text: input, now: now,
-                    localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
+                    localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier,
+                    activeTaskContext: activeTaskContext
                 )
                 Self.log.info("[TaskParsing] llmParser succeeded=true")
                 let final = Self.applyLLMShortInputOptionB(input: input, result: result)
@@ -113,7 +127,8 @@ struct TaskParsingCoordinator {
         do {
             localResult = try await localParser.parse(
                 text: input, now: now,
-                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
+                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier,
+                activeTaskContext: nil
             )
         } catch {
             Self.log.error("[TaskParsing] localParser failed error=\(String(describing: error), privacy: .public)")
@@ -134,7 +149,8 @@ struct TaskParsingCoordinator {
             do {
                 let result = try await llm.parse(
                     text: input, now: now,
-                    localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
+                    localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier,
+                    activeTaskContext: nil
                 )
                 Self.log.info("[TaskParsing] llmParser fallbackSucceeded=true")
                 let final = Self.applyLLMShortInputOptionB(input: input, result: result)
@@ -170,7 +186,8 @@ struct TaskParsingCoordinator {
         do {
             let local = try await localParser.parse(
                 text: input, now: now,
-                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier
+                localeIdentifier: localeIdentifier, timeZoneIdentifier: timeZoneIdentifier,
+                activeTaskContext: nil
             )
             Self.log.info("[TaskParsing] localParser fallbackSucceeded=true actionType=\(String(describing: local.actionType), privacy: .public)")
             Self.logParsedCommand(local, label: "final (local fallback)")

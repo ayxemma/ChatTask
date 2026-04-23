@@ -32,7 +32,7 @@ enum ShortInputLLMPresentation {
     static func applyOptionB(userInput: String, command: ParsedCommand) -> ParsedCommand {
         guard command.parserSource == .llm else { return command }
         switch command.actionType {
-        case .deleteTask, .rescheduleTask, .appendToTask:
+        case .deleteTask, .rescheduleTask, .appendToTask, .updateTaskTitle:
             return command
         default:
             break

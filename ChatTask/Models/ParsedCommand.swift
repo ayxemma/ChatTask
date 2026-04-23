@@ -9,6 +9,7 @@ enum ActionType: String, CaseIterable, Equatable {
     case deleteTask
     case rescheduleTask
     case appendToTask
+    case updateTaskTitle
 }
 
 enum ParserSource: String, Codable, Equatable {
@@ -39,4 +40,6 @@ struct ParsedCommand: Equatable {
     var newScheduledDate: Date? = nil
     /// Text to append to an existing task's notes.
     var appendText: String? = nil
+    /// New title for updateTaskTitle (LLM / backend `new_title`).
+    var newTitle: String? = nil
 }

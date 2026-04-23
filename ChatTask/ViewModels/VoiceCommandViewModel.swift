@@ -70,6 +70,8 @@ final class VoiceCommandViewModel {
     var pendingVoiceTranscript: String = ""
     var parsedCommand: ParsedCommand?
     var disambiguationCandidates: [TaskItem] = []
+    /// Most recent task touched in this chat session; sent to backend parse for follow-ups. Cleared on sheet dismiss.
+    var lastActiveChatTaskContext: ChatActiveTaskContext?
 
     private var pendingConflictCommand: ParsedCommand?
     private var pendingDeleteTask: TaskItem?
@@ -81,6 +83,7 @@ final class VoiceCommandViewModel {
         case delete
         case reschedule(newDate: Date)
         case appendNote(text: String)
+        case rename(to: String)
     }
 
     private struct PendingEditAction {
@@ -566,7 +569,8 @@ final class VoiceCommandViewModel {
             text: transcript,
             now: Date(),
             localeIdentifier: uiLanguage.uiLocaleIdentifier,
-            timeZoneIdentifier: TimeZone.current.identifier
+            timeZoneIdentifier: TimeZone.current.identifier,
+            activeTaskContext: lastActiveChatTaskContext
         )
         Self.log.info("[VoiceChat] parse outcome actionType=\(String(describing: command.actionType), privacy: .public) parserSource=\(String(describing: command.parserSource), privacy: .public) title=\(command.title, privacy: .public)")
         parsedCommand = command
@@ -581,6 +585,9 @@ final class VoiceCommandViewModel {
             return
         case .appendToTask:
             handleAppendIntent(command)
+            return
+        case .updateTaskTitle:
+            handleUpdateTitleIntent(command)
             return
         default:
             break
@@ -632,9 +639,26 @@ final class VoiceCommandViewModel {
 
     // MARK: - Edit intent handlers (unchanged)
 
+    private func handleUpdateTitleIntent(_ command: ParsedCommand) {
+        let s = uiLanguage.strings
+        let newTitle = command.newTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !newTitle.isEmpty else {
+            emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
+            return
+        }
+        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
+        case .notFound:
+            emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
+        case .ambiguous(let matches):
+            enterDisambiguation(matches: matches, editType: .rename(to: newTitle), strings: s)
+        case .found(let task):
+            applyRename(task: task, newTitle: newTitle, strings: s)
+        }
+    }
+
     private func handleDeleteIntent(_ command: ParsedCommand) {
         let s = uiLanguage.strings
-        switch resolveTargetTask(near: command.targetDate) {
+        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
         case .notFound:
             Self.log.info("[VoiceChat] deleteIntent — no task found near targetDate=\(String(describing: command.targetDate), privacy: .public)")
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
@@ -649,7 +673,7 @@ final class VoiceCommandViewModel {
 
     private func handleRescheduleIntent(_ command: ParsedCommand) {
         let s = uiLanguage.strings
-        switch resolveTargetTask(near: command.targetDate) {
+        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
         case .notFound:
             Self.log.info("[VoiceChat] rescheduleIntent — no task found")
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
@@ -677,7 +701,7 @@ final class VoiceCommandViewModel {
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
             return
         }
-        switch resolveTargetTask(near: command.targetDate) {
+        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
         case .notFound:
             Self.log.info("[VoiceChat] appendIntent — no task found")
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
@@ -717,6 +741,8 @@ final class VoiceCommandViewModel {
             applyReschedule(task: task, newDate: newDate, strings: s)
         case .appendNote(let text):
             applyAppend(task: task, text: text, strings: s)
+        case .rename(let newTitle):
+            applyRename(task: task, newTitle: newTitle, strings: s)
         }
     }
 
@@ -733,9 +759,11 @@ final class VoiceCommandViewModel {
         task.scheduledDate = newDate
         task.updatedAt = Date()
         try? persistenceContext?.save()
+        TaskReminderService.shared.schedule(for: task)
         let timeStr = shortTimeFormatter.string(from: newDate)
-        let msg = String(format: s.chatRescheduleSuccess, task.title, timeStr)
+        let msg = assistantSuccessMessage(base: String(format: s.chatRescheduleSuccess, task.title, timeStr))
         emitAssistantResponse(msg, nextState: .success, stream: true)
+        refreshActiveContext(from: task)
     }
 
     private func applyAppend(task: TaskItem, text: String, strings s: AppStrings) {
@@ -747,7 +775,17 @@ final class VoiceCommandViewModel {
         }
         task.updatedAt = Date()
         try? persistenceContext?.save()
-        emitAssistantResponse(String(format: s.chatAppendSuccess, task.title), nextState: .success, stream: true)
+        emitAssistantResponse(assistantSuccessMessage(base: String(format: s.chatAppendSuccess, task.title)), nextState: .success, stream: true)
+        refreshActiveContext(from: task)
+    }
+
+    private func applyRename(task: TaskItem, newTitle: String, strings s: AppStrings) {
+        Self.log.info("[VoiceChat] renameApplied newTitle=\(newTitle, privacy: .public)")
+        task.title = newTitle
+        task.updatedAt = Date()
+        try? persistenceContext?.save()
+        emitAssistantResponse(assistantSuccessMessage(base: String(format: s.chatRenameSuccess, newTitle)), nextState: .success, stream: true)
+        refreshActiveContext(from: task)
     }
 
     // MARK: - Delete confirmation (unchanged)
@@ -755,12 +793,16 @@ final class VoiceCommandViewModel {
     func chatConfirmDelete() {
         guard let task = pendingDeleteTask else { return }
         let title = task.title
+        let deletedId = task.id
         pendingDeleteTask = nil
         Self.log.info("[VoiceChat] deleteConfirmed title=\(title, privacy: .public)")
         if let ctx = persistenceContext {
             TaskReminderService.shared.cancel(taskID: task.id)
             ctx.delete(task)
             try? ctx.save()
+        }
+        if lastActiveChatTaskContext?.taskID == deletedId {
+            lastActiveChatTaskContext = nil
         }
         emitAssistantResponse(String(format: uiLanguage.strings.chatDeleteSuccess, title), nextState: .success, stream: true)
     }
@@ -791,29 +833,43 @@ final class VoiceCommandViewModel {
         case notFound
     }
 
-    private func resolveTargetTask(near targetDate: Date?) -> TaskResolution {
-        guard let targetDate, let ctx = persistenceContext else { return .notFound }
-        let descriptor = FetchDescriptor<TaskItem>(
-            predicate: #Predicate<TaskItem> { !$0.isCompleted }
-        )
-        let candidates = (try? ctx.fetch(descriptor)) ?? []
-        let window: TimeInterval = 15 * 60
-        let matches = candidates.filter { item in
-            guard let d = item.scheduledDate,
-                  TaskScheduleFormatting.hasWallClockTime(d) else { return false }
-            return abs(d.timeIntervalSince(targetDate)) <= window
+    private func resolveTargetTask(near targetDate: Date?, activeFallback: ChatActiveTaskContext?) -> TaskResolution {
+        if let targetDate, let ctx = persistenceContext {
+            let descriptor = FetchDescriptor<TaskItem>(
+                predicate: #Predicate<TaskItem> { !$0.isCompleted }
+            )
+            let candidates = (try? ctx.fetch(descriptor)) ?? []
+            let window: TimeInterval = 15 * 60
+            let matches = candidates.filter { item in
+                guard let d = item.scheduledDate,
+                      TaskScheduleFormatting.hasWallClockTime(d) else { return false }
+                return abs(d.timeIntervalSince(targetDate)) <= window
+            }
+            switch matches.count {
+            case 1: return .found(matches[0])
+            case 0: break
+            default: return .ambiguous(matches)
+            }
         }
-        switch matches.count {
-        case 0: return .notFound
-        case 1: return .found(matches[0])
-        default: return .ambiguous(matches)
+        if let fb = activeFallback, let task = fetchIncompleteTask(id: fb.taskID) {
+            return .found(task)
         }
+        return .notFound
+    }
+
+    private func fetchIncompleteTask(id: UUID) -> TaskItem? {
+        guard let ctx = persistenceContext else { return nil }
+        let tid = id
+        var descriptor = FetchDescriptor<TaskItem>(predicate: #Predicate<TaskItem> { $0.id == tid })
+        descriptor.fetchLimit = 1
+        guard let task = try? ctx.fetch(descriptor).first, !task.isCompleted else { return nil }
+        return task
     }
 
     // MARK: - Helpers (unchanged)
 
     private func commitSave(command: ParsedCommand) {
-        let reply = confirmationMessage(for: command, userTranscript: command.originalText)
+        let reply = assistantSuccessMessage(base: confirmationMessage(for: command, userTranscript: command.originalText))
         if let ctx = persistenceContext {
             let resolvedDate = command.reminderDate ?? command.startDate
             print("""
@@ -822,7 +878,8 @@ final class VoiceCommandViewModel {
               scheduledDate=\(String(describing: resolvedDate))
               reminderOffsetMinutes=\(ReminderOffset.globalDefault.rawValue) (globalDefault)
             """)
-            TaskItem.insertFromParsedCommand(command, context: ctx)
+            let item = TaskItem.insertFromParsedCommand(command, context: ctx)
+            refreshActiveContext(from: item)
             Self.log.info("""
                 [VoiceChat] taskSaveSuccess \
                 title=\(command.title, privacy: .public) \
@@ -831,6 +888,21 @@ final class VoiceCommandViewModel {
                 """)
         }
         emitAssistantResponse(reply, nextState: .success, stream: true)
+    }
+
+    private func assistantSuccessMessage(base: String) -> String {
+        let hint = uiLanguage.strings.chatFollowUpHint
+        if hint.isEmpty { return base }
+        return base + "\n\n" + hint
+    }
+
+    private func refreshActiveContext(from task: TaskItem) {
+        lastActiveChatTaskContext = ChatActiveTaskContext(
+            taskID: task.id,
+            title: task.title,
+            scheduledDate: task.scheduledDate,
+            notes: task.notes
+        )
     }
 
     /// Returns the first incomplete task whose scheduled time falls on the same
@@ -898,6 +970,7 @@ final class VoiceCommandViewModel {
         pendingDeleteTask = nil
         pendingEditAction = nil
         disambiguationCandidates = []
+        lastActiveChatTaskContext = nil
         Self.log.info("[VoiceChat] chatDismissReset completed — state ready for new session")
     }
 

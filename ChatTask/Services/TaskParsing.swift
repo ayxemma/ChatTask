@@ -9,7 +9,8 @@ protocol TaskParsing {
         text: String,
         now: Date,
         localeIdentifier: String,
-        timeZoneIdentifier: String
+        timeZoneIdentifier: String,
+        activeTaskContext: ChatActiveTaskContext?
     ) async throws -> ParsedCommand
 }
 
@@ -19,8 +20,10 @@ struct LocalTaskParser: TaskParsing {
         text: String,
         now: Date,
         localeIdentifier: String,
-        timeZoneIdentifier: String
+        timeZoneIdentifier: String,
+        activeTaskContext: ChatActiveTaskContext?
     ) async throws -> ParsedCommand {
+        _ = activeTaskContext // follow-ups use backend LLM; local parser unchanged
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
         let languageCode = localeIdentifier.split(separator: "-").first.map(String.init)

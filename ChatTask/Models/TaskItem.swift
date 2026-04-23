@@ -65,12 +65,13 @@ final class TaskItem {
     }
 
     @MainActor
-    static func insertFromParsedCommand(_ command: ParsedCommand, context: ModelContext) {
+    @discardableResult
+    static func insertFromParsedCommand(_ command: ParsedCommand, context: ModelContext) -> TaskItem {
         let kind: TaskKind
         switch command.actionType {
         case .reminder: kind = .reminder
         case .calendarEvent: kind = .event
-        case .unknown, .deleteTask, .rescheduleTask, .appendToTask: kind = .task
+        case .unknown, .deleteTask, .rescheduleTask, .appendToTask, .updateTaskTitle: kind = .task
         }
         let now = Date()
         let item = TaskItem(
@@ -89,5 +90,6 @@ final class TaskItem {
         context.insert(item)
         try? context.save()
         TaskReminderService.shared.schedule(for: item)
+        return item
     }
 }

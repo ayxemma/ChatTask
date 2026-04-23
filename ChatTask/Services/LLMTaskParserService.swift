@@ -22,7 +22,13 @@ extension LLMError {
 struct LLMTaskParserService: TaskParsing {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "TaskParsing")
 
-    func parse(text: String, now: Date, localeIdentifier: String, timeZoneIdentifier: String) async throws -> ParsedCommand {
+    func parse(
+        text: String,
+        now: Date,
+        localeIdentifier: String,
+        timeZoneIdentifier: String,
+        activeTaskContext: ChatActiveTaskContext?
+    ) async throws -> ParsedCommand {
         BackendWarmup.scheduleSessionWarmup() // same session API as app lifecycle; coalesced
         let requestId = UUID()
         let endpoint = BackendConfig.parseURL
@@ -33,15 +39,26 @@ struct LLMTaskParserService: TaskParsing {
         let nowString = formatter.string(from: now)
 
         // Contract matches backend `ParseRequest` / `LLMTaskParseResponse` (snake_case). Parsing rules live on the server only.
-        let requestBody: [String: Any] = [
+        var requestBody: [String: Any] = [
             BackendCorrelation.requestIDJSONKey: requestId.uuidString,
             "text": text,
             "now": nowString,
             "timezone": timeZoneIdentifier,
             "locale": localeIdentifier,
         ]
+        if let ctx = activeTaskContext {
+            requestBody["last_active_task_id"] = ctx.taskID.uuidString
+            requestBody["active_task_title"] = ctx.title
+            if let sd = ctx.scheduledDate {
+                requestBody["active_task_scheduled_at"] = formatter.string(from: sd)
+            }
+            if let n = ctx.notes, !n.isEmpty {
+                let maxNote = 800
+                requestBody["active_task_notes"] = n.count > maxNote ? String(n.prefix(maxNote)) + "…" : n
+            }
+        }
 
-        Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) bodyReady textLength=\(text.count, privacy: .public) timezone=\(timeZoneIdentifier, privacy: .public)")
+        Self.log.info("[Parse] requestId=\(requestId.uuidString, privacy: .public) bodyReady textLength=\(text.count, privacy: .public) timezone=\(timeZoneIdentifier, privacy: .public) activeTask=\(activeTaskContext != nil, privacy: .public)")
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -92,7 +109,7 @@ struct LLMTaskParserService: TaskParsing {
             Self.log.warning("[Parse] action_type unmapped raw=\(parsed.actionType ?? "nil", privacy: .public)")
         }
 
-        if actionType == .deleteTask || actionType == .rescheduleTask || actionType == .appendToTask {
+        if actionType == .deleteTask || actionType == .rescheduleTask || actionType == .appendToTask || actionType == .updateTaskTitle {
             let targetDate = parsed.targetTime.flatMap { Self.parseISO8601($0, timeZone: tz) }
             let newScheduledDate = parsed.newScheduledAt.flatMap { Self.parseISO8601($0, timeZone: tz) }
 
@@ -109,7 +126,8 @@ struct LLMTaskParserService: TaskParsing {
                 languageCode: parsed.languageCode,
                 targetDate: targetDate,
                 newScheduledDate: newScheduledDate,
-                appendText: parsed.appendText
+                appendText: parsed.appendText,
+                newTitle: parsed.newTitle
             )
             Self.logFinalParsedCommand(cmd)
             return cmd
@@ -163,7 +181,8 @@ struct LLMTaskParserService: TaskParsing {
             scheduled_at=\(p.scheduledAt ?? "nil", privacy: .public) \
             target_time=\(p.targetTime ?? "nil", privacy: .public) \
             new_scheduled_at=\(p.newScheduledAt ?? "nil", privacy: .public) \
-            append_text=\(p.appendText ?? "nil", privacy: .public)
+            append_text=\(p.appendText ?? "nil", privacy: .public) \
+            new_title=\(p.newTitle ?? "nil", privacy: .public)
             """)
     }
 
@@ -205,6 +224,7 @@ struct LLMTaskParserService: TaskParsing {
         case "deletetask":     return (.deleteTask, false)
         case "rescheduletask": return (.rescheduleTask, false)
         case "appendtotask":   return (.appendToTask, false)
+        case "updatetasktitle": return (.updateTaskTitle, false)
         default:
             if let t = ActionType(rawValue: raw) { return (t, false) }
             return (.unknown, true)

@@ -268,6 +268,9 @@ struct AppStrings {
     let chatDeleteCanceled: String
     let chatRescheduleSuccess: String
     let chatAppendSuccess: String
+    /// Shown on a new line after a successful chat save/edit so the user knows they can keep talking.
+    let chatFollowUpHint: String
+    let chatRenameSuccess: String
     let chatTextInputPlaceholder: String
     let reminderLabel: String
     let reminderDefaultLabel: String
@@ -442,6 +445,8 @@ struct AppStrings {
         chatDeleteCanceled: "OK, kept it.",
         chatRescheduleSuccess: "Done — moved \"%@\" to %@.",
         chatAppendSuccess: "Added note to \"%@\".",
+        chatFollowUpHint: "You can keep editing this task.",
+        chatRenameSuccess: "Renamed to \"%@\".",
         chatTextInputPlaceholder: "Type or say a task\u{2026}",
         reminderLabel: "Reminder",
         reminderDefaultLabel: "Default Reminder",
@@ -611,6 +616,8 @@ struct AppStrings {
         chatDeleteCanceled: "好的，已保留。",
         chatRescheduleSuccess: "已完成——将「%@」改到 %@。",
         chatAppendSuccess: "已为「%@」添加备注。",
+        chatFollowUpHint: "您可以继续修改这条任务。",
+        chatRenameSuccess: "已改名为「%@」。",
         chatTextInputPlaceholder: "输入或说出任务\u{2026}",
         reminderLabel: "提醒",
         reminderDefaultLabel: "默认提醒时间",
@@ -780,6 +787,8 @@ struct AppStrings {
         chatDeleteCanceled: "De acuerdo, conservado.",
         chatRescheduleSuccess: "Listo — moví \"%@\" a %@.",
         chatAppendSuccess: "Nota añadida a \"%@\".",
+        chatFollowUpHint: "Puedes seguir editando esta tarea.",
+        chatRenameSuccess: "Renombrado a \"%@\".",
         chatTextInputPlaceholder: "Escribe o di una tarea\u{2026}",
         reminderLabel: "Recordatorio",
         reminderDefaultLabel: "Recordatorio predeterminado",
