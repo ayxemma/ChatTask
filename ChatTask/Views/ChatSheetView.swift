@@ -82,15 +82,7 @@ struct ChatSheetView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(viewModel.chatMessages) { message in
-                        VStack(alignment: .leading, spacing: 4) {
-                            chatBubble(message)
-                            if shouldShowEditHint(after: message) {
-                                Text(strings.chatFollowUpHint)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 14)
-                            }
-                        }
+                        chatBubble(message)
                         .id(message.id)
                     }
                 }
@@ -124,15 +116,34 @@ struct ChatSheetView: View {
             }
 
             if let title = viewModel.lastActiveChatTaskContext?.title, !title.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "pencil")
-                        .font(.caption2.weight(.semibold))
-                    Text("Editing: \(title)")
+                HStack(spacing: 8) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.caption2.weight(.semibold))
+                        Text("Editing:")
+                            .foregroundStyle(.secondary)
+                        Text(title)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
                         .font(.caption)
-                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button {
+                        viewModel.clearActiveChatTaskContext()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Exit editing mode")
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             // Status label
@@ -159,14 +170,6 @@ struct ChatSheetView: View {
                 composerRow(s: s)
             }
         }
-    }
-
-    private func shouldShowEditHint(after message: ChatMessage) -> Bool {
-        guard viewModel.shouldShowInitialEditHint,
-              message.role == .assistant,
-              viewModel.chatMessages.last(where: { $0.role == .assistant })?.id == message.id
-        else { return false }
-        return !strings.chatFollowUpHint.isEmpty
     }
 
     // MARK: - Composer row

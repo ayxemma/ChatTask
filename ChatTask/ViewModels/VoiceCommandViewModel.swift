@@ -82,7 +82,6 @@ final class VoiceCommandViewModel {
     var disambiguationCandidates: [TaskItem] = []
     /// Most recent task touched in this chat session; sent to backend parse for follow-ups. Cleared on sheet dismiss.
     var lastActiveChatTaskContext: ChatActiveTaskContext?
-    var shouldShowInitialEditHint = false
 
     private var pendingConflictCommand: ParsedCommand?
     private var pendingDeleteTask: TaskItem?
@@ -1108,7 +1107,6 @@ final class VoiceCommandViewModel {
             """)
             let item = TaskItem.insertFromParsedCommand(command, context: ctx)
             refreshActiveContext(from: item)
-            shouldShowInitialEditHint = true
             Self.log.info("""
                 [VoiceChat] taskSaveSuccess \
                 title=\(command.title, privacy: .public) \
@@ -1117,6 +1115,13 @@ final class VoiceCommandViewModel {
                 """)
         }
         emitAssistantResponse(reply, nextState: .success, stream: true)
+    }
+
+    func clearActiveChatTaskContext() {
+        if let ctx = lastActiveChatTaskContext {
+            Self.log.info("[VoiceChat] activeTaskContextCleared taskID=\(ctx.taskID.uuidString, privacy: .public) title=\(ctx.title, privacy: .public)")
+        }
+        lastActiveChatTaskContext = nil
     }
 
     private func refreshActiveContext(from task: TaskItem) {
@@ -1190,7 +1195,6 @@ final class VoiceCommandViewModel {
         chatDraftText = ""
         isTextEditing = false
         pendingVoiceTranscript = ""
-        shouldShowInitialEditHint = false
         chatMessages = []
         parsedCommand = nil
         pendingConflictCommand = nil
