@@ -1,4 +1,10 @@
 import SwiftUI
+import os.log
+
+private struct ChatSheetSession: Identifiable {
+    let id = UUID()
+    let source: String
+}
 
 struct RootTabView: View {
     @Environment(\.appUILanguage) private var appUILanguage
@@ -6,7 +12,9 @@ struct RootTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
 
-    @State private var showChat = false
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "RootTab")
+
+    @State private var chatSheetSession: ChatSheetSession?
     @State private var chatViewModel = VoiceCommandViewModel()
     @State private var selectedTab = HomeTab.home.rawValue
 
@@ -22,7 +30,10 @@ struct RootTabView: View {
         ZStack {
             TabView(selection: $selectedTab) {
                 NavigationStack {
-                    HomeView()
+                    HomeView(onChatTap: {
+                        Self.log.info("[RootTab] chatFABTapped")
+                        requestChatPresentation(source: "FAB")
+                    })
                 }
                 .tabItem {
                     Label(s.homeTab, systemImage: "house.fill")
@@ -38,23 +49,17 @@ struct RootTabView: View {
                 .tag(HomeTab.calendar.rawValue)
             }
 
-            // Full-window overlay (Home only): GeometryReader inside tab content measured
-            // only the area above the tab bar, so maxY sat too high. Measuring here uses
-            // the scene size and real bottom safe inset.
-            if selectedTab == HomeTab.home.rawValue {
-                DraggableChatButton(
-                    onTap: {
-                        BackendWarmup.scheduleSessionWarmup()
-                        showChat = true
-                    },
-                    accessibilityLabel: s.openCommandChat
-                )
-            }
         }
-        .sheet(isPresented: $showChat) {
+        .sheet(item: $chatSheetSession, onDismiss: {
+            Self.log.info("[RootTab] chatSheetDismissed")
+            chatSheetSession = nil
+        }) { session in
             ChatSheetView(viewModel: chatViewModel)
                 .environment(\.themePalette, themePalette)
                 .presentationDragIndicator(.visible)
+                .onAppear {
+                    Self.log.info("[RootTab] chatSheetPresented source=\(session.source, privacy: .public)")
+                }
         }
         .onAppear {
             chatViewModel.uiLanguage = selectedUILanguage
@@ -65,6 +70,25 @@ struct RootTabView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             chatViewModel.handleAppScenePhaseChange(newPhase)
+        }
+    }
+
+    private func requestChatPresentation(source: String) {
+        guard source == "FAB" else {
+            Self.log.error("[RootTab] unexpectedChatPresentation source=\(source, privacy: .public)")
+            return
+        }
+        BackendWarmup.scheduleSessionWarmup()
+        if chatSheetSession != nil {
+            Self.log.warning("[RootTab] unexpectedChatPresentation reason=existingSessionReset source=\(source, privacy: .public)")
+            chatSheetSession = nil
+            DispatchQueue.main.async {
+                chatSheetSession = ChatSheetSession(source: source)
+                Self.log.info("[RootTab] chatSheetPresentationRequested source=\(source, privacy: .public)")
+            }
+        } else {
+            chatSheetSession = ChatSheetSession(source: source)
+            Self.log.info("[RootTab] chatSheetPresentationRequested source=\(source, privacy: .public)")
         }
     }
 }

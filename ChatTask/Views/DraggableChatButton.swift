@@ -77,12 +77,7 @@ struct DraggableChatButton: View {
                     height: clampedDrag.y - base.y
                 )
 
-                ZStack {
-                    Color.clear
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false)
-
-                    Image(systemName: "message.fill")
+                Image(systemName: "message.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(themePalette.isMinimal ? themePalette.accentColor : Color.white)
                         .frame(width: DraggableChatButtonMetrics.size, height: DraggableChatButtonMetrics.size)
@@ -149,7 +144,6 @@ struct DraggableChatButton: View {
                                     }
                                 }
                         )
-                }
                 #if DEBUG
                 .onAppear {
                     if !didLogPlacementMode {

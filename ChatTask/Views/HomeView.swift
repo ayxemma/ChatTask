@@ -104,6 +104,7 @@ struct HomeView: View {
     @Query(sort: \TaskItem.updatedAt, order: .reverse) private var allTasks: [TaskItem]
 
     @State private var composerSession: ComposerSession?   // replaces showTaskComposer: Bool
+    let onChatTap: () -> Void
 
     // Per-section expansion state
     @State private var isTodayExpanded    = true
@@ -116,7 +117,8 @@ struct HomeView: View {
     @State private var sectionOrder: [DashboardColumn]
     @State private var draggingSection: DashboardColumn?
 
-    init() {
+    init(onChatTap: @escaping () -> Void = {}) {
+        self.onChatTap = onChatTap
         let saved = UserDefaults.standard.string(forKey: homeSectionOrderKey) ?? homeSectionOrderDefault
         _sectionOrder = State(initialValue: DashboardColumn.from(storageString: saved))
     }
@@ -184,6 +186,11 @@ struct HomeView: View {
             }
             .background(themePalette.backgroundColor)
             .animation(.easeInOut(duration: 0.35), value: themePalette.theme)
+
+            DraggableChatButton(
+                onTap: onChatTap,
+                accessibilityLabel: s.openCommandChat
+            )
         }
         .sheet(item: $composerSession) { session in
             NavigationStack {

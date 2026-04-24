@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import os.log
 
 /// Placeholder URLs — replace with your production legal pages before release.
 private enum LegalURLs {
@@ -21,6 +22,8 @@ struct SettingsView: View {
     @State private var showPaywall = false
     @State private var showPurchaseErrorAlert = false
     @State private var purchaseErrorAlertText = ""
+
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VocaTime", category: "Settings")
 
     private var strings: AppStrings { appUILanguage.strings }
 
@@ -217,6 +220,7 @@ struct SettingsView: View {
                 ForEach(AppColorTheme.allCases) { t in
                     let palette = AppThemePalette.palette(for: t)
                     Button {
+                        Self.log.info("[Settings] themeColorTapped color=\(t.rawValue, privacy: .public)")
                         withAnimation(.easeInOut(duration: 0.28)) {
                             themeRaw = t.rawValue
                         }
