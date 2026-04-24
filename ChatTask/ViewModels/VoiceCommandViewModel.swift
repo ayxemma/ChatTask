@@ -39,6 +39,12 @@ enum VoiceFlowState: Equatable {
     case error
 }
 
+enum VoiceStopReason: String {
+    case manual
+    case autoSilence
+    case maxTimeout
+}
+
 // MARK: - Transcript source (for logging and parse-strategy selection)
 
 private enum TranscriptSource {
@@ -121,6 +127,10 @@ final class VoiceCommandViewModel {
     /// Bumps when a stream is superseded/cancelled so only the latest stream may mutate bubbles.
     private var streamEpoch: UInt = 0
     private var streamRevealTask: Task<Void, Never>?
+    private var autoRelistenTask: Task<Void, Never>?
+    private var isChatSheetPresented = false
+    private var isAppActive = true
+    private var isTextEditing = false
     /// When set, the next assistant reply should fill this bubble (or append if not found).
     /// Used only for typed send / parse flow — not for cloud STT (draft stays in the composer).
     private var pendingAssistantSlotId: UUID?
@@ -169,12 +179,20 @@ final class VoiceCommandViewModel {
     }
 
     func handleUILanguageChanged() async {
+        cancelAutoRelisten(reason: "languageChanged")
         await speechService.cancelForReset()
         cancelMaxRecordingTimer()
         if chatFlowState == .listening {
             chatFlowState = .idle
             chatDraftText = ""
         }
+    }
+
+    func chatSheetDidAppear() {
+        isChatSheetPresented = true
+        cancelAutoRelisten(reason: "sheetAppeared")
+        Self.log.info("[VoiceChat] chatSheetPresented=true — starting initial listening")
+        Task { await chatBeginListening(startReason: "sheetOpen") }
     }
 
     // MARK: - Typed text entry point
@@ -186,6 +204,8 @@ final class VoiceCommandViewModel {
         guard !trimmed.isEmpty else { return }
         guard chatFlowState == .idle || chatFlowState == .success || chatFlowState == .error else { return }
 
+        isTextEditing = false
+        cancelAutoRelisten(reason: "typedSubmit")
         Self.log.info("[VoiceChat] typedTextSubmit text=\(trimmed, privacy: .public)")
         voiceDraftErrorMessage = nil
         // Perception: user bubble + empty assistant row immediately, then non-blocking warm-up, then work.
@@ -203,6 +223,7 @@ final class VoiceCommandViewModel {
     /// Used when the user taps the text field while listening, signalling they prefer to type.
     func chatCancelListening() async {
         guard chatFlowState == .listening else { return }
+        cancelAutoRelisten(reason: "userSwitchedToText")
         cancelMaxRecordingTimer()
         speechService.onPartialTranscript = nil
         await speechService.cancelForReset()
@@ -211,15 +232,23 @@ final class VoiceCommandViewModel {
         Self.log.info("[VoiceChat] listeningCancelled — user switched to text input")
     }
 
+    func chatTextEditingChanged(isFocused: Bool) {
+        isTextEditing = isFocused
+        if isFocused {
+            cancelAutoRelisten(reason: "textEditing")
+        }
+    }
+
     // MARK: - Mic tap entry point (unchanged)
 
     func chatMicrophoneTapped() {
+        cancelAutoRelisten(reason: "micTapped")
         switch chatFlowState {
         case .idle, .success, .error:
-            Task { await chatBeginListening() }
+            Task { await chatBeginListening(startReason: "manual") }
         case .listening:
-            Self.log.info("[VoiceChat] userTappedStop stopReason=manual")
-            Task { await chatFinalizeListening() }
+            Self.log.info("[VoiceChat] stopReason=manual")
+            Task { await chatFinalizeListening(stopReason: .manual) }
         case .processing, .conflictPending, .deletePending, .disambiguating:
             break
         }
@@ -236,7 +265,7 @@ final class VoiceCommandViewModel {
             guard !Task.isCancelled else { return }
             guard let self, self.chatFlowState == .listening else { return }
             Self.log.info("[VoiceChat] stopReason=maxTimeout — safety net fired after 30 s")
-            await self.chatFinalizeListening()
+            await self.chatFinalizeListening(stopReason: .maxTimeout)
         }
     }
 
@@ -300,9 +329,14 @@ final class VoiceCommandViewModel {
     /// Cancels delayed caption timers while inactive; restarts them when returning to `active` during an in-flight request.
     func handleAppScenePhaseChange(_ phase: ScenePhase) {
         if phase == .background || phase == .inactive {
+            isAppActive = false
+            cancelAutoRelisten(reason: "sceneInactive")
             cancelAllProcessingStatusHints()
-        } else if phase == .active, chatFlowState == .processing {
-            scheduleProcessingStatusSequence()
+        } else if phase == .active {
+            isAppActive = true
+            if chatFlowState == .processing {
+                scheduleProcessingStatusSequence()
+            }
         }
     }
 
@@ -349,13 +383,17 @@ final class VoiceCommandViewModel {
             if let slot = pendingAssistantSlotId, chatMessages.contains(where: { $0.id == slot && $0.role == .assistant }) {
                 pendingAssistantSlotId = nil
                 startStreamingText(into: slot, fullText: text) { [weak self] in
-                    self?.chatFlowState = nextState
+                    guard let self else { return }
+                    self.chatFlowState = nextState
+                    self.scheduleAutoRelistenAfterSuccessIfNeeded()
                 }
             } else {
                 let slot = UUID()
                 chatMessages.append(ChatMessage(id: slot, role: .assistant, text: ""))
                 startStreamingText(into: slot, fullText: text) { [weak self] in
-                    self?.chatFlowState = nextState
+                    guard let self else { return }
+                    self.chatFlowState = nextState
+                    self.scheduleAutoRelistenAfterSuccessIfNeeded()
                 }
             }
         } else {
@@ -368,17 +406,97 @@ final class VoiceCommandViewModel {
                 chatMessages.append(ChatMessage(role: .assistant, text: text))
             }
             chatFlowState = nextState
+            scheduleAutoRelistenAfterSuccessIfNeeded()
+        }
+    }
+
+    // MARK: - Auto re-listen
+
+    private static let autoRelistenDelayNanoseconds: UInt64 = 500_000_000
+
+    private func scheduleAutoRelistenAfterSuccessIfNeeded() {
+        guard chatFlowState == .success else { return }
+        scheduleAutoRelisten(reason: "commandCompleted")
+    }
+
+    private func scheduleAutoRelisten(reason: String) {
+        if let skip = autoRelistenSkipReason() {
+            Self.log.info("[VoiceChat] autoRelistenSkipped reason=\(skip, privacy: .public) trigger=\(reason, privacy: .public)")
+            return
+        }
+        cancelAutoRelisten(reason: "coalesced")
+        Self.log.info("[VoiceChat] autoRelistenScheduled reason=\(reason, privacy: .public) delayMs=500")
+        autoRelistenTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.autoRelistenDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            if let skip = self.autoRelistenSkipReason() {
+                Self.log.info("[VoiceChat] autoRelistenSkipped reason=\(skip, privacy: .public) trigger=delayedStart")
+                self.autoRelistenTask = nil
+                return
+            }
+            Self.log.info("[VoiceChat] autoRelistenStarted")
+            self.autoRelistenTask = nil
+            await self.chatBeginListening(startReason: "autoRelisten")
+        }
+    }
+
+    private func cancelAutoRelisten(reason: String) {
+        guard autoRelistenTask != nil else { return }
+        autoRelistenTask?.cancel()
+        autoRelistenTask = nil
+        Self.log.info("[VoiceChat] autoRelistenCancelled reason=\(reason, privacy: .public)")
+    }
+
+    private func autoRelistenSkipReason() -> String? {
+        guard isChatSheetPresented else { return "sheetNotPresented" }
+        guard isAppActive else { return "appInactive" }
+        guard !isTextEditing else { return "textEditing" }
+        guard pendingAssistantSlotId == nil else { return "assistantSlotPending" }
+        guard pendingConflictCommand == nil else { return "conflictPending" }
+        guard pendingDeleteTask == nil else { return "deletePending" }
+        guard pendingEditAction == nil else { return "editPending" }
+        guard disambiguationCandidates.isEmpty else { return "disambiguationPending" }
+
+        switch chatFlowState {
+        case .idle, .success:
+            return nil
+        case .listening:
+            return "alreadyListening"
+        case .processing:
+            return "processing"
+        case .conflictPending:
+            return "conflictPending"
+        case .deletePending:
+            return "deletePending"
+        case .disambiguating:
+            return "disambiguationPending"
+        case .error:
+            return "errorState"
         }
     }
 
     // MARK: - Begin listening
 
-    func chatBeginListening() async {
+    func chatBeginListening(startReason: String = "manual") async {
+        guard chatFlowState == .idle || chatFlowState == .success || chatFlowState == .error else {
+            Self.log.info("[VoiceChat] listenStartSkipped reason=stateNotReady state=\(String(describing: self.chatFlowState), privacy: .public) startReason=\(startReason, privacy: .public)")
+            return
+        }
+        guard isChatSheetPresented else {
+            Self.log.info("[VoiceChat] listenStartSkipped reason=sheetNotPresented startReason=\(startReason, privacy: .public)")
+            return
+        }
+        guard isAppActive else {
+            Self.log.info("[VoiceChat] listenStartSkipped reason=appInactive startReason=\(startReason, privacy: .public)")
+            return
+        }
+
         voiceDraftErrorMessage = nil
         cancelMaxRecordingTimer()
 
         let msgs = uiLanguage.speechMessages
-        Self.log.info("[VoiceChat] recordingStarted appUILanguage=\(self.uiLanguage.rawValue, privacy: .public)")
+        Self.log.info("[VoiceChat] recordingStarted startReason=\(startReason, privacy: .public) appUILanguage=\(self.uiLanguage.rawValue, privacy: .public)")
 
         // Keep Apple partials internal only; multilingual chat displays the backend transcript after stop.
         speechService.onPartialTranscript = { [weak self] text in
@@ -398,8 +516,12 @@ final class VoiceCommandViewModel {
         let startError = await speechService.startListening(
             locale: uiLanguage.locale,
             messages: msgs,
-            autoStopBehavior: .disabled,
-            onAutoStop: nil
+            autoStopBehavior: .enabled,
+            onAutoStop: { [weak self] in
+                guard let self, self.chatFlowState == .listening else { return }
+                Self.log.info("[VoiceChat] stopReason=autoSilence")
+                Task { await self.chatFinalizeListening(stopReason: .autoSilence) }
+            }
         )
 
         if let startError {
@@ -409,19 +531,19 @@ final class VoiceCommandViewModel {
 
         chatFlowState = .listening
         startMaxRecordingTimer()
-        Self.log.info("[VoiceChat] listening active — tap-to-stop; auto silence disabled; max timeout=30s")
+        Self.log.info("[VoiceChat] listening active — tap-to-stop with auto-silence fallback; max timeout=30s")
     }
 
     // MARK: - Finalize listening (orchestrator)
 
-    func chatFinalizeListening() async {
+    func chatFinalizeListening(stopReason: VoiceStopReason = .manual) async {
         guard chatFlowState == .listening else { return }
         cancelMaxRecordingTimer()
         chatFlowState = .processing
         chatDraftText = ""
 
         let pipelineT0 = CFAbsoluteTimeGetCurrent()
-        Self.log.info("[VoiceChat] stoppingListening")
+        Self.log.info("[VoiceChat] stoppingListening stopReason=\(stopReason.rawValue, privacy: .public)")
         let stopT0 = CFAbsoluteTimeGetCurrent()
         let captureOutcome = await speechService.stopListening(waitForLocalFinal: false)
         Self.log.info("[VoiceChat] latency stopListening ms=\(latencyMs(since: stopT0), privacy: .public)")
@@ -985,6 +1107,8 @@ final class VoiceCommandViewModel {
     }
 
     func prepareForNewSession() async {
+        isChatSheetPresented = false
+        cancelAutoRelisten(reason: "sheetDismissed")
         speechService.onPartialTranscript = nil
         await speechService.cancelForReset()
         cancelMaxRecordingTimer()
@@ -995,6 +1119,7 @@ final class VoiceCommandViewModel {
         showExtendedThinkingStatus = false
         chatFlowState = .idle
         chatDraftText = ""
+        isTextEditing = false
         pendingVoiceTranscript = ""
         chatMessages = []
         parsedCommand = nil

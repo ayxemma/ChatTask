@@ -244,6 +244,7 @@ final class SpeechRecognizerService: SpeechManaging {
         lastBufferPowerLevel = -160
 
         if autoStopBehavior == .enabled {
+            Self.log.info("[Speech] autoSilenceEnabled threshold=\(Self.silenceDurationToStop, privacy: .public)s")
             startMeteringTask(autoStopEnabled: true)
         } else {
             Self.log.info("[Speech] autoSilenceDisabled — user-controlled stop mode")

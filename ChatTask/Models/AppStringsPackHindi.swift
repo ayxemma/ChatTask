@@ -69,7 +69,7 @@ extension AppStrings {
         statusProvisional: "अस्थायी",
         statusUnknown: "अज्ञात",
         voiceTapToSpeak: "बोलने के लिए माइक्रोफ़ोन पर टैप करें।",
-        voiceListening: "सुन रहा हूँ… पूरा होने पर रोकें पर टैप करें।",
+        voiceListening: "सुन रहा हूँ… रोकने के लिए टैप करें या समाप्त करने के लिए रुकें।",
         voiceProcessing: "प्रोसेसिंग…",
         voiceWakingUpServer: "कृपया प्रतीक्षा करें…",
         chatAssistantThinking: "सोच रहा हूँ…",

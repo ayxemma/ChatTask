@@ -45,7 +45,8 @@ struct ChatSheetView: View {
                 viewModel.attachPersistence(modelContext)
                 viewModel.uiLanguage = appUILanguage
                 BackendWarmup.scheduleSessionWarmup()
-                Self.log.info("[ChatSheet] chatReady — tap mic to start recording")
+                Self.log.info("[ChatSheet] chatAutoStart — sheet opened, beginning recording")
+                viewModel.chatSheetDidAppear()
             }
             .onDisappear {
                 Task {
@@ -159,6 +160,7 @@ struct ChatSheetView: View {
                     if focused {
                         BackendWarmup.scheduleSessionWarmup()
                     }
+                    viewModel.chatTextEditingChanged(isFocused: focused)
                     // When the user taps into the text field while recording, cancel the
                     // recording session so they can type freely without noisy audio.
                     if focused, viewModel.chatFlowState == .listening {
