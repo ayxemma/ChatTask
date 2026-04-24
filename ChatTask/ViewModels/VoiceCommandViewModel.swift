@@ -800,7 +800,7 @@ final class VoiceCommandViewModel {
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
             return
         }
-        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
+        switch resolveEditTarget(for: command) {
         case .notFound:
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
         case .ambiguous(let matches):
@@ -812,7 +812,7 @@ final class VoiceCommandViewModel {
 
     private func handleDeleteIntent(_ command: ParsedCommand) {
         let s = uiLanguage.strings
-        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
+        switch resolveEditTarget(for: command) {
         case .notFound:
             Self.log.info("[VoiceChat] deleteIntent — no task found near targetDate=\(String(describing: command.targetDate), privacy: .public)")
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
@@ -827,7 +827,7 @@ final class VoiceCommandViewModel {
 
     private func handleRescheduleIntent(_ command: ParsedCommand) {
         let s = uiLanguage.strings
-        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
+        switch resolveEditTarget(for: command) {
         case .notFound:
             Self.log.info("[VoiceChat] rescheduleIntent — no task found")
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
@@ -855,7 +855,7 @@ final class VoiceCommandViewModel {
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
             return
         }
-        switch resolveTargetTask(near: command.targetDate, activeFallback: lastActiveChatTaskContext) {
+        switch resolveEditTarget(for: command) {
         case .notFound:
             Self.log.info("[VoiceChat] appendIntent — no task found")
             emitAssistantResponse(s.chatEditNoTaskFound, nextState: .error, stream: false)
@@ -987,7 +987,30 @@ final class VoiceCommandViewModel {
         case notFound
     }
 
-    private func resolveTargetTask(near targetDate: Date?, activeFallback: ChatActiveTaskContext?) -> TaskResolution {
+    private func resolveEditTarget(for command: ParsedCommand) -> TaskResolution {
+        let implicitActive = isImplicitActiveTaskReference(command.originalText)
+        let explicitDifferent = isExplicitDifferentTarget(command)
+        logActiveTaskContext(command: command, implicitActive: implicitActive, explicitDifferent: explicitDifferent)
+
+        if !explicitDifferent, let active = lastActiveChatTaskContext {
+            if let task = fetchIncompleteTask(id: active.taskID) {
+                let reason = implicitActive ? "implicitCurrentTaskReference" : "activeContextDefaultNoExplicitTarget"
+                Self.log.info("[VoiceChat] editTargetResolution source=activeTaskContext actionType=\(String(describing: command.actionType), privacy: .public) reason=\(reason, privacy: .public) skipDisambiguation=true taskID=\(active.taskID.uuidString, privacy: .public) title=\(active.title, privacy: .public) scheduledDate=\(String(describing: active.scheduledDate), privacy: .public)")
+                return .found(task)
+            }
+            Self.log.info("[VoiceChat] editTargetResolution source=activeTaskContext reason=activeTaskMissing fallback=globalMatching taskID=\(active.taskID.uuidString, privacy: .public) title=\(active.title, privacy: .public)")
+        }
+
+        if explicitDifferent {
+            Self.log.info("[VoiceChat] editTargetResolution source=explicitMatch actionType=\(String(describing: command.actionType), privacy: .public) reason=explicitDifferentTarget")
+        } else {
+            Self.log.info("[VoiceChat] editTargetResolution source=globalFallback actionType=\(String(describing: command.actionType), privacy: .public) reason=noActiveContextOrTargetMissing")
+        }
+
+        return resolveTargetTaskGlobally(near: command.targetDate)
+    }
+
+    private func resolveTargetTaskGlobally(near targetDate: Date?) -> TaskResolution {
         if let targetDate, let ctx = persistenceContext {
             let descriptor = FetchDescriptor<TaskItem>(
                 predicate: #Predicate<TaskItem> { !$0.isCompleted }
@@ -1000,15 +1023,65 @@ final class VoiceCommandViewModel {
                 return abs(d.timeIntervalSince(targetDate)) <= window
             }
             switch matches.count {
-            case 1: return .found(matches[0])
-            case 0: break
-            default: return .ambiguous(matches)
+            case 1:
+                Self.log.info("[VoiceChat] editTargetResolution source=explicitMatch result=found title=\(matches[0].title, privacy: .public) targetDate=\(targetDate, privacy: .public)")
+                return .found(matches[0])
+            case 0:
+                Self.log.info("[VoiceChat] editTargetResolution source=explicitMatch result=notFound targetDate=\(targetDate, privacy: .public)")
+                break
+            default:
+                Self.log.info("[VoiceChat] editTargetResolution source=globalDisambiguation reason=multipleTargetDateMatches count=\(matches.count, privacy: .public) targetDate=\(targetDate, privacy: .public)")
+                return .ambiguous(matches)
             }
         }
-        if let fb = activeFallback, let task = fetchIncompleteTask(id: fb.taskID) {
-            return .found(task)
-        }
+        Self.log.info("[VoiceChat] editTargetResolution source=globalMatching result=notFound reason=noTargetDateOrNoMatches")
         return .notFound
+    }
+
+    private func isImplicitActiveTaskReference(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let compact = lower.replacingOccurrences(of: " ", with: "")
+        let phrases = [
+            "this", "it", "this task", "current task", "the current task",
+            "这个", "這個", "这个任务", "這個任務", "这个提醒", "這個提醒",
+            "它", "它们", "它們", "刚才那个", "剛才那個", "上一个任务", "上一個任務", "上个任务", "上個任務"
+        ]
+        return phrases.contains { phrase in
+            let normalized = phrase.lowercased().replacingOccurrences(of: " ", with: "")
+            return compact.contains(normalized)
+        }
+    }
+
+    private func isExplicitDifferentTarget(_ command: ParsedCommand) -> Bool {
+        if isImplicitActiveTaskReference(command.originalText) {
+            return false
+        }
+        let lower = command.originalText.lowercased()
+        let compact = lower.replacingOccurrences(of: " ", with: "")
+        if compact.contains("那个") || compact.contains("那個") {
+            return true
+        }
+        let explicitCJKTargetMarkers = ["的提醒", "的任务", "的任務", "的会议", "的會議"]
+        if command.targetDate != nil,
+           explicitCJKTargetMarkers.contains(where: { compact.contains($0) }) {
+            return true
+        }
+        let explicitEnglishPatterns = [
+            #"the\s+.+\s+task"#,
+            #"the\s+.+\s+reminder"#,
+            #"the\s+.+\s+meeting"#,
+        ]
+        return explicitEnglishPatterns.contains { pattern in
+            lower.range(of: pattern, options: .regularExpression) != nil
+        }
+    }
+
+    private func logActiveTaskContext(command: ParsedCommand, implicitActive: Bool, explicitDifferent: Bool) {
+        if let ctx = lastActiveChatTaskContext {
+            Self.log.info("[VoiceChat] activeTaskContext taskID=\(ctx.taskID.uuidString, privacy: .public) title=\(ctx.title, privacy: .public) scheduledDate=\(String(describing: ctx.scheduledDate), privacy: .public) actionType=\(String(describing: command.actionType), privacy: .public) implicitReference=\(implicitActive, privacy: .public) explicitDifferentTarget=\(explicitDifferent, privacy: .public)")
+        } else {
+            Self.log.info("[VoiceChat] activeTaskContext nil actionType=\(String(describing: command.actionType), privacy: .public) implicitReference=\(implicitActive, privacy: .public) explicitDifferentTarget=\(explicitDifferent, privacy: .public)")
+        }
     }
 
     private func fetchIncompleteTask(id: UUID) -> TaskItem? {
