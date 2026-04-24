@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5F2DD8002F9BEF81004030AF /* ChatActiveTaskContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F2DD7FF2F9BEF81004030AF /* ChatActiveTaskContext.swift */; };
 		A10000000000000000000001 /* ChatTaskApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* ChatTaskApp.swift */; };
 		A10000000000000000000002 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* HomeView.swift */; };
 		A10000000000000000000003 /* RecordButtonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* RecordButtonView.swift */; };
@@ -59,6 +60,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		5F2DD7FF2F9BEF81004030AF /* ChatActiveTaskContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatActiveTaskContext.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* ChatTaskApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTaskApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* RecordButtonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordButtonView.swift; sourceTree = "<group>"; };
@@ -232,6 +234,7 @@
 				A20000000000000000000018 /* TaskItem.swift */,
 				A2000000000000000000002A /* ReminderOffset.swift */,
 				A2000000000000000000002C /* SubscriptionConfig.swift */,
+				5F2DD7FF2F9BEF81004030AF /* ChatActiveTaskContext.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -351,6 +354,7 @@
 				A1000000000000000000002A /* ReminderOffset.swift in Sources */,
 				A1000000000000000000002B /* SettingsView.swift in Sources */,
 				A1000000000000000000002C /* SubscriptionConfig.swift in Sources */,
+				5F2DD8002F9BEF81004030AF /* ChatActiveTaskContext.swift in Sources */,
 				A1000000000000000000002D /* SubscriptionManager.swift in Sources */,
 				A1000000000000000000002E /* PaywallView.swift in Sources */,
 			);

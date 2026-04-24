@@ -29,6 +29,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
 
     /// Reads audio from disk and returns the transcript string from the backend JSON `{ "text": "..." }`.
     func transcribe(audioFileURL: URL) async throws -> String {
+        let transcribeT0 = CFAbsoluteTimeGetCurrent()
         BackendWarmup.scheduleSessionWarmup() // coalesced with app lifecycle warm-up
         let requestId = UUID()
         let endpoint = BackendConfig.transcribeURL
@@ -36,12 +37,14 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
 
         // ── 1. Audio file ───────────────────────────────────────────────────────
         let audioData: Data
+        let fileReadT0 = CFAbsoluteTimeGetCurrent()
         do {
             audioData = try Data(contentsOf: audioFileURL)
         } catch {
             Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=fileReadFailed path=\(audioFileURL.path, privacy: .public) error=\(String(describing: error), privacy: .public)")
             throw MultilingualTranscriptionError.fileReadFailed(underlying: error, requestId: requestId)
         }
+        Self.log.info("[Transcription] latency fileRead ms=\(Int((CFAbsoluteTimeGetCurrent() - fileReadT0) * 1000), privacy: .public)")
 
         guard !audioData.isEmpty else {
             Self.log.error("[Transcription] requestId=\(requestId.uuidString, privacy: .public) transcriptionFailureRootCause=fileEmpty path=\(audioFileURL.path, privacy: .public)")
@@ -55,6 +58,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
         Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) audioReady audioBytes=\(audioData.count, privacy: .public) path=\(audioFileURL.path, privacy: .public)")
 
         // ── 2. Multipart body ───────────────────────────────────────────────────
+        let multipartT0 = CFAbsoluteTimeGetCurrent()
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
 
@@ -86,11 +90,13 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
         request.httpBody = body
         request.timeoutInterval = 120
 
+        Self.log.info("[Transcription] latency multipartBuild ms=\(Int((CFAbsoluteTimeGetCurrent() - multipartT0) * 1000), privacy: .public)")
         Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) uploading mimeType=\(mimeType, privacy: .public) bodyBytes=\(body.count, privacy: .public)")
 
         // ── 3. Send ───────────────────────────────────────────────────────────────
         let data: Data
         let response: URLResponse
+        let networkT0 = CFAbsoluteTimeGetCurrent()
         do {
             // `POST /transcribe` not assumed idempotent: no HTTP 502/503 retry; transport errors may retry once.
             (data, response) = try await BackendFetchRetry.data(for: request, isIdempotent: false)
@@ -101,6 +107,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
             }
             throw MultilingualTranscriptionError.networkError(underlying: error, requestId: requestId)
         }
+        Self.log.info("[Transcription] latency transcribeNetwork ms=\(Int((CFAbsoluteTimeGetCurrent() - networkT0) * 1000), privacy: .public)")
 
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? -1
@@ -130,6 +137,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
 
         let text = decoded.text.trimmingCharacters(in: .whitespacesAndNewlines)
         Self.log.info("[Transcription] requestId=\(requestId.uuidString, privacy: .public) requestSucceeded transcriptLength=\(text.count, privacy: .public)")
+        Self.log.info("[Transcription] latency transcribe totalMs=\(Int((CFAbsoluteTimeGetCurrent() - transcribeT0) * 1000), privacy: .public)")
         return text
     }
 }

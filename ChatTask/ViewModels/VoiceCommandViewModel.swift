@@ -3,6 +3,10 @@ import os.log
 import SwiftData
 import SwiftUI
 
+private func latencyMs(since start: CFAbsoluteTime) -> Int {
+    Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+}
+
 // MARK: - Chat types (unchanged)
 
 enum ChatMessageRole: String, Equatable {
@@ -419,18 +423,23 @@ final class VoiceCommandViewModel {
         chatFlowState = .processing
         chatDraftText = ""
 
+        let pipelineT0 = CFAbsoluteTimeGetCurrent()
         Self.log.info("[VoiceChat] stoppingListening")
+        let stopT0 = CFAbsoluteTimeGetCurrent()
         let captureOutcome = await speechService.stopListening()
+        Self.log.info("[VoiceChat] latency stopListening ms=\(latencyMs(since: stopT0), privacy: .public)")
         let strings = uiLanguage.strings
         let speechMsgs = uiLanguage.speechMessages
 
         switch captureOutcome {
         case .failure(let error):
             handleCaptureFailure(error, strings: strings, speechMsgs: speechMsgs)
+            Self.log.info("[VoiceChat] latency chatFinalizeListening totalMs=\(latencyMs(since: pipelineT0), privacy: .public) outcome=failure")
 
         case .success(let captureResult):
             Self.log.info("[VoiceChat] captureSuccess localTranscript=\(captureResult.transcript, privacy: .public) confidence=\(String(describing: captureResult.confidence), privacy: .public) duration=\(captureResult.duration, privacy: .public)s audioURL=\(captureResult.audioURL?.path ?? "nil", privacy: .public)")
             await handleLocalSpeechResult(captureResult, strings: strings)
+            Self.log.info("[VoiceChat] latency chatFinalizeListening totalMs=\(latencyMs(since: pipelineT0), privacy: .public) outcome=success")
         }
     }
 
@@ -457,19 +466,23 @@ final class VoiceCommandViewModel {
         strings: AppStrings
     ) async {
         // Quick local eval to inform the routing decision (no network).
+        let evalT0 = CFAbsoluteTimeGetCurrent()
         let localParsed = await localEvaluator.evaluate(
             transcript: captureResult.transcript,
             now: Date(),
             localeIdentifier: uiLanguage.uiLocaleIdentifier,
             timeZoneIdentifier: TimeZone.current.identifier
         )
+        Self.log.info("[VoiceChat] latency localEvaluator.evaluate ms=\(latencyMs(since: evalT0), privacy: .public)")
 
+        let routerT0 = CFAbsoluteTimeGetCurrent()
         let routingDecision = transcriptionRouter.evaluate(
             transcript: captureResult.transcript,
             confidence: captureResult.confidence,
             duration: captureResult.duration,
             parsedCommand: localParsed
         )
+        Self.log.info("[VoiceChat] latency transcriptionRouter.evaluate ms=\(latencyMs(since: routerT0), privacy: .public)")
 
         switch routingDecision {
         case .acceptLocalTranscript(let trimmed):
@@ -494,11 +507,14 @@ final class VoiceCommandViewModel {
     private func handleCloudFallback(audioURL: URL, strings: AppStrings) async {
         defer { deleteAudioFile(audioURL) }
         // Cloud STT is user-typed draft data only: no assistant row, no streaming, no emitAssistantResponse.
+        let cloudT0 = CFAbsoluteTimeGetCurrent()
 
         let transcript: String
         do {
             Self.log.info("[VoiceChat] cloudTranscriptionStart audioURL=\(audioURL.path, privacy: .public)")
+            let transcribeT0 = CFAbsoluteTimeGetCurrent()
             transcript = try await transcriptionService.transcribe(audioFileURL: audioURL)
+            Self.log.info("[VoiceChat] latency transcriptionService.transcribe ms=\(latencyMs(since: transcribeT0), privacy: .public)")
             Self.log.info("[VoiceChat] cloudTranscriptionSuccess transcript=\(transcript, privacy: .public)")
         } catch {
             // Map each error category to a precise log string (for debugging)
@@ -533,6 +549,7 @@ final class VoiceCommandViewModel {
                 userMessage = strings.chatErrorSomethingWentWrong
             }
             Self.log.error("[VoiceChat] cloudTranscriptionFailure requestId=\(requestIdForLog, privacy: .public) rootCause=\(rootCause, privacy: .public)")
+            Self.log.info("[VoiceChat] latency handleCloudFallback totalMs=\(latencyMs(since: cloudT0), privacy: .public) outcome=failure")
             voiceDraftErrorMessage = userMessage
             chatFlowState = .error
             parsedCommand = nil
@@ -540,6 +557,7 @@ final class VoiceCommandViewModel {
         }
 
         deliverTranscriptToInputField(transcript)
+        Self.log.info("[VoiceChat] latency handleCloudFallback totalMs=\(latencyMs(since: cloudT0), privacy: .public) outcome=success")
     }
 
     // MARK: - Transcript → input field delivery
@@ -548,6 +566,10 @@ final class VoiceCommandViewModel {
     /// This is the final step of the voice pipeline — the user then taps send (or return)
     /// which routes through `chatSubmitTypedText`, the same path as manual typed input.
     private func deliverTranscriptToInputField(_ rawTranscript: String) {
+        let deliverT0 = CFAbsoluteTimeGetCurrent()
+        defer {
+            Self.log.info("[VoiceChat] latency deliverTranscriptToInputField ms=\(latencyMs(since: deliverT0), privacy: .public)")
+        }
         let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             // Transcript is user draft input — surface empty result in status only, not as assistant chat.

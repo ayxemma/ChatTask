@@ -72,53 +72,55 @@ struct TranscriptionRouter: TranscriptionRouting {
         duration: TimeInterval,
         parsedCommand: ParsedCommand?
     ) -> RoutingDecision {
+        let routerEvalT0 = CFAbsoluteTimeGetCurrent()
+        let evalMs: () -> Int = { Int((CFAbsoluteTimeGetCurrent() - routerEvalT0) * 1000) }
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // ── 1. Empty transcript → always fall back ────────────────────────────
         guard !trimmed.isEmpty else {
-            Self.log.info("[Router] decision=fallbackToCloud reason=emptyTranscript")
+            Self.log.info("[Router] decision=fallbackToCloud reason=emptyTranscript evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── 2. Long utterance but very short transcript → likely garbled ──────
         if duration > Self.longDurationThreshold, trimmed.count < Self.shortTranscriptThreshold {
-            Self.log.info("[Router] decision=fallbackToCloud reason=longDurationShortTranscript duration=\(duration, privacy: .public)s chars=\(trimmed.count, privacy: .public)")
+            Self.log.info("[Router] decision=fallbackToCloud reason=longDurationShortTranscript duration=\(duration, privacy: .public)s chars=\(trimmed.count, privacy: .public) evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── 3. Low confidence from Apple recognizer ───────────────────────────
         if let c = confidence, c < Self.confidenceThreshold {
-            Self.log.info("[Router] decision=fallbackToCloud reason=lowConfidence confidence=\(c, privacy: .public)")
+            Self.log.info("[Router] decision=fallbackToCloud reason=lowConfidence confidence=\(c, privacy: .public) evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── 4. Mixed Chinese + Latin script ──────────────────────────────────
         if detectMixedLanguage(trimmed) {
-            Self.log.info("[Router] decision=fallbackToCloud reason=mixedLanguage")
+            Self.log.info("[Router] decision=fallbackToCloud reason=mixedLanguage evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── 5. Rare / proper-noun terms ───────────────────────────────────────
         if detectRareTerms(trimmed) {
-            Self.log.info("[Router] decision=fallbackToCloud reason=rareTermDetected")
+            Self.log.info("[Router] decision=fallbackToCloud reason=rareTermDetected evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── 6. Null parse result (evaluator returned nothing) ─────────────────
         guard let parsedCommand else {
-            Self.log.info("[Router] decision=fallbackToCloud reason=noParsedCommand")
+            Self.log.info("[Router] decision=fallbackToCloud reason=noParsedCommand evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── 7. Weak parse: unknown action + no extracted date + short transcript
         //      These are cases where the LLM is likely to produce a better result ─
         if isParseWeak(parsedCommand), trimmed.count < 20 {
-            Self.log.info("[Router] decision=fallbackToCloud reason=weakParseShortTranscript actionType=\(String(describing: parsedCommand.actionType), privacy: .public)")
+            Self.log.info("[Router] decision=fallbackToCloud reason=weakParseShortTranscript actionType=\(String(describing: parsedCommand.actionType), privacy: .public) evalMs=\(evalMs(), privacy: .public)")
             return .fallbackToCloud
         }
 
         // ── Accept ────────────────────────────────────────────────────────────
-        Self.log.info("[Router] decision=acceptLocalTranscript chars=\(trimmed.count, privacy: .public) confidence=\(String(describing: confidence), privacy: .public) actionType=\(String(describing: parsedCommand.actionType), privacy: .public)")
+        Self.log.info("[Router] decision=acceptLocalTranscript chars=\(trimmed.count, privacy: .public) confidence=\(String(describing: confidence), privacy: .public) actionType=\(String(describing: parsedCommand.actionType), privacy: .public) evalMs=\(evalMs(), privacy: .public)")
         return .acceptLocalTranscript(trimmed)
     }
 
