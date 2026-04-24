@@ -215,45 +215,40 @@ struct SettingsView: View {
 
     private var themePickerGrid: some View {
         let selected = AppColorTheme(storageRaw: themeRaw)
-        let columns = [GridItem(.adaptive(minimum: 72), spacing: 12)]
-        return LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+        return HStack(spacing: 10) {
             ForEach(AppColorTheme.appearanceChoices) { t in
-                    let palette = AppThemePalette.palette(for: t)
-                    Button {
-                        Self.log.info("[Settings] themeColorTapped color=\(t.rawValue, privacy: .public)")
-                        withAnimation(.easeInOut(duration: 0.28)) {
-                            themeRaw = t.rawValue
-                        }
-                    } label: {
-                        ZStack {
-                            if t == .white {
-                                Circle()
-                                    .fill(Color(.systemBackground))
-                                    .frame(width: 40, height: 40)
-                                    .overlay(
-                                        Circle()
-                                            .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1.5)
-                                    )
-                            } else {
-                                Circle()
-                                    .fill(palette.primaryGradient)
-                                    .frame(width: 40, height: 40)
-                            }
-                            if selected == t {
-                                Circle()
-                                    .strokeBorder(Color.primary, lineWidth: 3)
-                                    .frame(width: 46, height: 46)
-                            }
-                        }
-                        .frame(width: 48, height: 48)
-                        .contentShape(Circle())
+                let palette = AppThemePalette.palette(for: t)
+                Button {
+                    Self.log.info("[Settings] themeColorTapped color=\(t.rawValue, privacy: .public)")
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        themeRaw = t.rawValue
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(t.displayName))
-                    .accessibilityHint(Text(t.accessibilityDescription))
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(t == .white ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(palette.primaryGradient))
+                            .frame(width: 24, height: 24)
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(t == .white ? Color.secondary.opacity(0.45) : Color.clear, lineWidth: 1)
+                            }
+                        if selected == t {
+                            Circle()
+                                .strokeBorder(Color.primary, lineWidth: 2)
+                                .frame(width: 30, height: 30)
+                        }
+                    }
+                    .frame(width: 34, height: 34)
+                    .scaleEffect(selected == t ? 1.08 : 1.0)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(t.displayName))
+                .accessibilityHint(Text(t.accessibilityDescription))
             }
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 2)
     }
 
     private var isPurchaseBusy: Bool {
