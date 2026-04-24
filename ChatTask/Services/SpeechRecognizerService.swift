@@ -61,28 +61,15 @@ protocol SpeechManaging: AnyObject {
 // MARK: - Implementation
 
 /*
- PIPELINE CHANGE SUMMARY
+ PIPELINE SUMMARY
  ─────────────────────────────────────────────────────────────────────────────
- Previous behaviour:
-   • AVAudioRecorder captured audio to a temp .m4a file.
-   • stopRecording() returned the file URL.
-   • VoiceCommandViewModel always uploaded the file to the backend for transcription.
-   • No live partial transcript was available during recording.
-
- New behaviour:
-   • AVAudioEngine drives the microphone.
-   • A single input-node tap feeds:
-       1. SFSpeechAudioBufferRecognitionRequest → live partial / final transcript
-       2. AVAudioFile (.wav) → on-disk recording for cloud fallback
-   • stopListening() waits up to 2 s for Apple's "isFinal" transcript, then returns
-     both the transcript and the audio URL in LocalSpeechCaptureResult.
-   • VoiceCommandViewModel routes: if local transcript passes quality checks, parse
-     immediately. Only if it fails, upload the audio to the backend `/transcribe` endpoint.
-
- Why we keep the audio file even when local recognition succeeds:
-   The TranscriptionRouter may upgrade its decision (e.g. mixed-language or low-confidence
-   discovered post-hoc). Having the file available avoids re-recording and lets the cloud
-   fallback start instantly without user interaction.
+ • AVAudioEngine tap → SFSpeechAudioBufferRecognitionRequest + AVAudioFile (.wav).
+ • stopListening(): stops engine, closes WAV immediately (recording finalized), ends audio on
+   the recognition request, then in parallel: (a) AAC/M4A export for smaller cloud uploads,
+   (b) adaptive wait for Apple final transcript — early exit when transcript is empty or below
+   TranscriptionRouter.confidenceThreshold so cloud path is not blocked for ~2s unnecessarily.
+ • High-confidence / final Apple results still wait for isFinal or full max wait when needed.
+ • Upload prefers `recording.m4a`; falls back to WAV if export fails (backend accepts audio MIME types).
  ─────────────────────────────────────────────────────────────────────────────
 */
 
@@ -133,6 +120,8 @@ final class SpeechRecognizerService: SpeechManaging {
     /// Continuation held while `stopListening()` waits for Apple's "isFinal" result.
     private var pendingFinalContinuation: CheckedContinuation<String, Never>?
     private var speechRecognitionAvailable: Bool = false
+    /// Whether the recognition callback delivered `result.isFinal` for this stop session.
+    private var stopSessionReceivedAppleFinal: Bool = false
 
     // MARK: - Public API
 
@@ -238,6 +227,7 @@ final class SpeechRecognizerService: SpeechManaging {
         autoStopCallback = onAutoStop
         currentBestTranscript = ""
         currentBestConfidence = nil
+        stopSessionReceivedAppleFinal = false
         lastBufferPowerLevel = -160
 
         startMeteringTask()
@@ -245,16 +235,16 @@ final class SpeechRecognizerService: SpeechManaging {
         return nil
     }
 
-    /// Stops listening and returns the local transcript plus the audio file URL.
-    /// Waits up to 2 seconds for Apple's final recognition result before timing out.
+    /// Stops listening and returns the local transcript plus the audio file URL (M4A when export succeeds).
     func stopListening() async -> Result<LocalSpeechCaptureResult, Error> {
-        guard let engine = audioEngine, let fileURL = recordingFileURL else {
+        guard let engine = audioEngine, let wavURL = recordingFileURL else {
             return .failure(speechRecognitionError(
                 code: .nothingToStop,
                 fallbackMessage: "Nothing to stop — start listening first."
             ))
         }
 
+        let stopT0 = CFAbsoluteTimeGetCurrent()
         let duration = Date().timeIntervalSince(recordingStartTime ?? Date())
         stopMeteringTask()
         autoStopCallback = nil
@@ -263,20 +253,38 @@ final class SpeechRecognizerService: SpeechManaging {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         audioEngine = nil
-        Self.log.info("[Speech] engine stopped duration=\(duration, privacy: .public)s")
+        Self.log.info("[Speech] engine stopped duration=\(duration, privacy: .public)s latency engineStop ms=\(Self.latencyMs(since: stopT0), privacy: .public)")
 
-        // ── Wait for final transcript ─────────────────────────────────────────
+        // Close WAV immediately so export + disk state are valid without waiting on Apple Speech.
+        let recCloseT0 = CFAbsoluteTimeGetCurrent()
+        audioFile = nil
+        Self.log.info("[Speech] latency recordingFinalize ms=\(Self.latencyMs(since: recCloseT0), privacy: .public)")
+
+        let speechWaitT0 = CFAbsoluteTimeGetCurrent()
+        async let m4aExportTask: URL? = exportWavToM4AForUploadIfPossible(wavURL: wavURL)
+
         let finalTranscript: String
         if speechRecognitionAvailable, let request = recognitionRequest {
             request.endAudio()
-            finalTranscript = await waitForFinalTranscript(timeout: 2.0)
-            Self.log.info("[Speech] localFinalTranscript=\(finalTranscript, privacy: .public) confidence=\(String(describing: self.currentBestConfidence), privacy: .public)")
+            finalTranscript = await waitForFinalTranscript(maxWait: 2.0)
+            Self.log.info("[Speech] localFinalTranscript=\(finalTranscript, privacy: .public) confidence=\(String(describing: self.currentBestConfidence), privacy: .public) appleFinal=\(self.stopSessionReceivedAppleFinal, privacy: .public)")
         } else {
             finalTranscript = currentBestTranscript
         }
+        Self.log.info("[Speech] latency speechFinalWait ms=\(Self.latencyMs(since: speechWaitT0), privacy: .public)")
 
-        // ── Teardown ─────────────────────────────────────────────────────────
-        audioFile = nil  // Closes the file; safe now that tap is removed
+        let m4aURL = await m4aExportTask
+        var uploadURL = wavURL
+        if let m4aURL {
+            try? FileManager.default.removeItem(at: wavURL)
+            uploadURL = m4aURL
+            let m4aBytes = (try? FileManager.default.attributesOfItem(atPath: m4aURL.path)[.size] as? Int) ?? 0
+            Self.log.info("[Speech] uploadFormat=m4a uploadBytes=\(m4aBytes, privacy: .public)")
+        } else {
+            Self.log.info("[Speech] uploadFormat=wav m4aExportFailedOrSkipped=true")
+        }
+
+        // ── Teardown speech (after transcript + export readers no longer need engine state) ──
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
@@ -286,31 +294,71 @@ final class SpeechRecognizerService: SpeechManaging {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
 
         // ── Validate file ─────────────────────────────────────────────────────
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            Self.log.error("[Speech] recordingFileMissing path=\(fileURL.path, privacy: .public)")
+        guard FileManager.default.fileExists(atPath: uploadURL.path) else {
+            Self.log.error("[Speech] recordingFileMissing path=\(uploadURL.path, privacy: .public)")
             return .failure(speechRecognitionError(code: .recordingFailed, fallbackMessage: "Recording file missing."))
         }
 
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
-        Self.log.info("[Speech] recordingFinalized fileBytes=\(fileSize, privacy: .public) path=\(fileURL.path, privacy: .public)")
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: uploadURL.path)[.size] as? Int) ?? 0
+        Self.log.info("[Speech] recordingReady fileBytes=\(fileSize, privacy: .public) ext=\(uploadURL.pathExtension, privacy: .public)")
 
-        // Float32 WAV: even 0.1 s of audio is ~17 KB at 44.1 kHz stereo. Anything ≤ 4 KB is an empty header.
+        // Float32 WAV / M4A: Anything ≤ 4 KB is effectively empty.
         guard fileSize > 4096 else {
             Self.log.error("[Speech] fileTooSmall — likely no audio captured fileBytes=\(fileSize, privacy: .public)")
-            try? FileManager.default.removeItem(at: fileURL)
+            try? FileManager.default.removeItem(at: uploadURL)
             return .failure(speechRecognitionError(
                 code: .recordingFailed,
                 fallbackMessage: "Recording captured no audio — file too small (\(fileSize) bytes)."
             ))
         }
 
+        Self.log.info("[Speech] latency stopListening totalMs=\(Self.latencyMs(since: stopT0), privacy: .public)")
         return .success(LocalSpeechCaptureResult(
             transcript: finalTranscript,
-            isFinal: true,
+            isFinal: stopSessionReceivedAppleFinal,
             confidence: currentBestConfidence,
-            audioURL: fileURL,
+            audioURL: uploadURL,
             duration: duration
         ))
+    }
+
+    private static func latencyMs(since start: CFAbsoluteTime) -> Int {
+        Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+    }
+
+    /// AAC in M4A for smaller `/transcribe` uploads; returns nil on any failure (caller keeps WAV).
+    private func exportWavToM4AForUploadIfPossible(wavURL: URL) async -> URL? {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let outURL = wavURL.deletingPathExtension().appendingPathExtension("m4a")
+        if FileManager.default.fileExists(atPath: outURL.path) {
+            try? FileManager.default.removeItem(at: outURL)
+        }
+        let asset = AVURLAsset(url: wavURL)
+        if #available(iOS 16.0, *) {
+            let exportable = (try? await asset.load(.isExportable)) ?? false
+            guard exportable else {
+                Self.log.info("[Speech] m4aExport skip reason=notExportable")
+                return nil
+            }
+        }
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            Self.log.info("[Speech] m4aExport skip reason=noSession")
+            return nil
+        }
+        session.outputURL = outURL
+        session.outputFileType = .m4a
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            session.exportAsynchronously { cont.resume() }
+        }
+        guard session.status == .completed else {
+            Self.log.info("[Speech] m4aExport failed status=\(session.status.rawValue, privacy: .public) err=\(String(describing: session.error), privacy: .public)")
+            try? FileManager.default.removeItem(at: outURL)
+            return nil
+        }
+        let wavBytes = (try? FileManager.default.attributesOfItem(atPath: wavURL.path)[.size] as? Int) ?? 0
+        let m4aBytes = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
+        Self.log.info("[Speech] latency wavToM4a ms=\(Self.latencyMs(since: t0), privacy: .public) wavBytes=\(wavBytes, privacy: .public) m4aBytes=\(m4aBytes, privacy: .public)")
+        return outURL
     }
 
     // MARK: - Permission helpers
@@ -371,6 +419,7 @@ final class SpeechRecognizerService: SpeechManaging {
 
                     if result.isFinal {
                         Self.log.info("[Speech] recognitionFinal transcript=\(transcript, privacy: .public)")
+                        self.stopSessionReceivedAppleFinal = true
                         self.resumeFinalContinuation(with: transcript)
                         let captureResult = LocalSpeechCaptureResult(
                             transcript: transcript,
@@ -400,8 +449,8 @@ final class SpeechRecognizerService: SpeechManaging {
 
     // MARK: - Final transcript waiter
 
-    private func waitForFinalTranscript(timeout: TimeInterval) async -> String {
-        // If the task already completed before we got here, return immediately.
+    /// Waits for Apple `isFinal`, total cap `maxWait`, or early exit when cloud routing would reject the transcript anyway.
+    private func waitForFinalTranscript(maxWait: TimeInterval) async -> String {
         if let task = recognitionTask,
            task.state == .completed || task.state == .canceling {
             return currentBestTranscript
@@ -409,12 +458,30 @@ final class SpeechRecognizerService: SpeechManaging {
 
         return await withCheckedContinuation { continuation in
             pendingFinalContinuation = continuation
-            // Timeout fallback — resumes on MainActor so there is no data race with the
-            // recognition callback (both are serialized on the same actor).
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(timeout))
-                guard let self else { return }
-                self.resumeFinalContinuation(with: self.currentBestTranscript)
+            Task { @MainActor in
+                let start = CFAbsoluteTimeGetCurrent()
+                let pollNs: UInt64 = 45_000_000
+                while self.pendingFinalContinuation != nil {
+                    let elapsed = CFAbsoluteTimeGetCurrent() - start
+                    if elapsed >= maxWait {
+                        self.resumeFinalContinuation(with: self.currentBestTranscript)
+                        return
+                    }
+                    let trimmed = self.currentBestTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let conf = self.currentBestConfidence
+                    // Unusable for local path → don't block cloud on a slow Apple final.
+                    if elapsed >= 0.38 && trimmed.isEmpty {
+                        Self.log.info("[Speech] earlyExitSpeechWait reason=empty elapsedMs=\(Int(elapsed * 1000), privacy: .public)")
+                        self.resumeFinalContinuation(with: self.currentBestTranscript)
+                        return
+                    }
+                    if elapsed >= 0.52, let c = conf, c < TranscriptionRouter.confidenceThreshold {
+                        Self.log.info("[Speech] earlyExitSpeechWait reason=lowConfidence chars=\(trimmed.count, privacy: .public) conf=\(c, privacy: .public) elapsedMs=\(Int(elapsed * 1000), privacy: .public)")
+                        self.resumeFinalContinuation(with: self.currentBestTranscript)
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: pollNs)
+                }
             }
         }
     }

@@ -72,6 +72,7 @@ struct MultilingualTranscriptionService: FallbackTranscribing {
             case "wav":  return ("audio/wav",  "recording.wav")
             case "flac": return ("audio/flac", "recording.flac")
             case "mp3":  return ("audio/mpeg", "recording.mp3")
+            case "m4a":  return ("audio/mp4",  "recording.m4a")
             default:     return ("audio/mp4",  "recording.m4a")
             }
         }()
