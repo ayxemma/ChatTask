@@ -16,7 +16,7 @@ struct SettingsView: View {
     @Environment(SubscriptionManager.self) private var subscriptionManager
 
     @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
-    @AppStorage(AppColorTheme.storageKey) private var themeRaw: String = AppColorTheme.purple.rawValue
+    @AppStorage(AppColorTheme.storageKey) private var themeRaw: String = AppColorTheme.white.rawValue
     @AppStorage(ReminderOffset.defaultsKey) private var reminderDefaultMinutes: Int = 0
 
     @State private var showPaywall = false
@@ -215,9 +215,9 @@ struct SettingsView: View {
 
     private var themePickerGrid: some View {
         let selected = AppColorTheme(storageRaw: themeRaw)
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                ForEach(AppColorTheme.allCases) { t in
+        let columns = [GridItem(.adaptive(minimum: 72), spacing: 12)]
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+            ForEach(AppColorTheme.appearanceChoices) { t in
                     let palette = AppThemePalette.palette(for: t)
                     Button {
                         Self.log.info("[Settings] themeColorTapped color=\(t.rawValue, privacy: .public)")
@@ -251,10 +251,9 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(t.displayName))
                     .accessibilityHint(Text(t.accessibilityDescription))
-                }
             }
-            .padding(.vertical, 4)
         }
+        .padding(.vertical, 4)
     }
 
     private var isPurchaseBusy: Bool {

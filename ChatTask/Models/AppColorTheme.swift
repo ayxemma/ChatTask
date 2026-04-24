@@ -16,9 +16,11 @@ enum AppColorTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static let storageKey = "appColorTheme"
+    static let appearanceChoices: [AppColorTheme] = [.white, .purple, .pink, .green, .yellow, .red, .blue]
 
     init(storageRaw: String) {
-        self = AppColorTheme(rawValue: storageRaw) ?? .purple
+        let parsed = AppColorTheme(rawValue: storageRaw) ?? .white
+        self = parsed == .orange ? .yellow : parsed
     }
 
     var displayName: String {
@@ -244,7 +246,7 @@ struct AppThemePalette {
 // MARK: - Environment
 
 private enum AppThemePaletteKey: EnvironmentKey {
-    static let defaultValue: AppThemePalette = .palette(for: .purple)
+    static let defaultValue: AppThemePalette = .palette(for: .white)
 }
 
 extension EnvironmentValues {

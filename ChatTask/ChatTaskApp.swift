@@ -44,7 +44,7 @@ struct ChatTaskApp: App {
 
 private struct AppShellView: View {
     @AppStorage(AppUILanguage.storageKey) private var languageRaw: String = AppUILanguage.defaultForDevice().rawValue
-    @AppStorage(AppColorTheme.storageKey) private var themeRaw: String = AppColorTheme.purple.rawValue
+    @AppStorage(AppColorTheme.storageKey) private var themeRaw: String = AppColorTheme.white.rawValue
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(\.scenePhase) private var scenePhase
     @Query private var allTasks: [TaskItem]
