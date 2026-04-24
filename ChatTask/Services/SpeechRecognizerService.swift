@@ -57,6 +57,7 @@ protocol SpeechManaging: AnyObject {
     var onPartialTranscript: ((String) -> Void)? { get set }
     var onFinalResult: ((LocalSpeechCaptureResult) -> Void)? { get set }
     var onStateChange: ((SpeechState) -> Void)? { get set }
+    var onSpeechDetected: (() -> Void)? { get set }
 
     func requestAuthorizationIfNeeded(messages: SpeechServiceMessages) async -> String?
     func startListening(
@@ -103,6 +104,7 @@ final class SpeechRecognizerService: SpeechManaging {
     var onPartialTranscript: ((String) -> Void)?
     var onFinalResult: ((LocalSpeechCaptureResult) -> Void)?
     var onStateChange: ((SpeechState) -> Void)?
+    var onSpeechDetected: (() -> Void)?
 
     // MARK: - Audio engine state
 
@@ -536,6 +538,7 @@ final class SpeechRecognizerService: SpeechManaging {
                     if !hasSpeech {
                         hasSpeech = true
                         SpeechRecognizerService.log.info("[Speech] speechDetected level=\(level, privacy: .public)dB")
+                        self.onSpeechDetected?()
                         lastLoggedState = "speaking"
                     }
                     if silenceStartedAt != nil {
@@ -600,6 +603,7 @@ final class SpeechRecognizerService: SpeechManaging {
         stopMeteringTask()
         autoStopCallback = nil
         pendingFinalContinuation = nil
+        onSpeechDetected = nil
 
         if let engine = audioEngine {
             engine.inputNode.removeTap(onBus: 0)

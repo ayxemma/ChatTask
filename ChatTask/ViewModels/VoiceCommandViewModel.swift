@@ -128,6 +128,12 @@ final class VoiceCommandViewModel {
     private var streamEpoch: UInt = 0
     private var streamRevealTask: Task<Void, Never>?
     private var autoRelistenTask: Task<Void, Never>?
+    private var followUpNoSpeechTask: Task<Void, Never>?
+    private var voiceDraftAwaitingSubmit = false
+    private var currentSubmitCameFromVoiceDraft = false
+    private var currentListeningIsAutoFollowUp = false
+    private var voiceFollowUpAutoStartsRemaining = 0
+    private var lastUnclearFeedbackAt: Date = .distantPast
     private var isChatSheetPresented = false
     private var isAppActive = true
     private var isTextEditing = false
@@ -205,6 +211,8 @@ final class VoiceCommandViewModel {
         guard chatFlowState == .idle || chatFlowState == .success || chatFlowState == .error else { return }
 
         isTextEditing = false
+        currentSubmitCameFromVoiceDraft = voiceDraftAwaitingSubmit
+        voiceDraftAwaitingSubmit = false
         cancelAutoRelisten(reason: "typedSubmit")
         Self.log.info("[VoiceChat] typedTextSubmit text=\(trimmed, privacy: .public)")
         voiceDraftErrorMessage = nil
@@ -214,7 +222,7 @@ final class VoiceCommandViewModel {
         chatMessages.append(ChatMessage(id: slotId, role: .assistant, text: ""))
         pendingAssistantSlotId = slotId
         chatFlowState = .processing
-        parsingCoordinator.strategy = .localFirst
+        parsingCoordinator.strategy = currentSubmitCameFromVoiceDraft ? .llmFirst : .localFirst
         BackendWarmup.scheduleSessionWarmup()
         await applyChatParse(transcript: trimmed)
     }
@@ -225,7 +233,9 @@ final class VoiceCommandViewModel {
         guard chatFlowState == .listening else { return }
         cancelAutoRelisten(reason: "userSwitchedToText")
         cancelMaxRecordingTimer()
+        cancelFollowUpNoSpeechTimer(reason: "userSwitchedToText")
         speechService.onPartialTranscript = nil
+        speechService.onSpeechDetected = nil
         await speechService.cancelForReset()
         chatFlowState = .idle
         chatDraftText = ""
@@ -331,6 +341,7 @@ final class VoiceCommandViewModel {
         if phase == .background || phase == .inactive {
             isAppActive = false
             cancelAutoRelisten(reason: "sceneInactive")
+            cancelFollowUpNoSpeechTimer(reason: "sceneInactive")
             cancelAllProcessingStatusHints()
         } else if phase == .active {
             isAppActive = true
@@ -385,7 +396,7 @@ final class VoiceCommandViewModel {
                 startStreamingText(into: slot, fullText: text) { [weak self] in
                     guard let self else { return }
                     self.chatFlowState = nextState
-                    self.scheduleAutoRelistenAfterSuccessIfNeeded()
+                    self.scheduleFollowUpListeningAfterSuccessIfNeeded()
                 }
             } else {
                 let slot = UUID()
@@ -393,7 +404,7 @@ final class VoiceCommandViewModel {
                 startStreamingText(into: slot, fullText: text) { [weak self] in
                     guard let self else { return }
                     self.chatFlowState = nextState
-                    self.scheduleAutoRelistenAfterSuccessIfNeeded()
+                    self.scheduleFollowUpListeningAfterSuccessIfNeeded()
                 }
             }
         } else {
@@ -406,16 +417,27 @@ final class VoiceCommandViewModel {
                 chatMessages.append(ChatMessage(role: .assistant, text: text))
             }
             chatFlowState = nextState
-            scheduleAutoRelistenAfterSuccessIfNeeded()
+            scheduleFollowUpListeningAfterSuccessIfNeeded()
         }
     }
 
-    // MARK: - Auto re-listen
+    // MARK: - Follow-up listening window
 
     private static let autoRelistenDelayNanoseconds: UInt64 = 500_000_000
+    private static let followUpNoSpeechNanoseconds: UInt64 = 7_000_000_000
 
-    private func scheduleAutoRelistenAfterSuccessIfNeeded() {
+    private func scheduleFollowUpListeningAfterSuccessIfNeeded() {
         guard chatFlowState == .success else { return }
+        guard currentSubmitCameFromVoiceDraft else {
+            Self.log.info("[VoiceChat] autoRelistenSkipped reason=notVoiceCommand")
+            return
+        }
+        currentSubmitCameFromVoiceDraft = false
+        guard voiceFollowUpAutoStartsRemaining > 0 else {
+            Self.log.info("[VoiceChat] autoRelistenSkipped reason=followUpWindowConsumed")
+            return
+        }
+        voiceFollowUpAutoStartsRemaining -= 1
         scheduleAutoRelisten(reason: "commandCompleted")
     }
 
@@ -446,6 +468,26 @@ final class VoiceCommandViewModel {
         autoRelistenTask?.cancel()
         autoRelistenTask = nil
         Self.log.info("[VoiceChat] autoRelistenCancelled reason=\(reason, privacy: .public)")
+    }
+
+    private func startFollowUpNoSpeechTimerIfNeeded(startReason: String) {
+        cancelFollowUpNoSpeechTimer(reason: "rescheduled")
+        guard startReason == "autoRelisten" else { return }
+        Self.log.info("[VoiceChat] followUpWindowStarted timeoutMs=7000")
+        followUpNoSpeechTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.followUpNoSpeechNanoseconds)
+            guard !Task.isCancelled else { return }
+            guard let self, self.chatFlowState == .listening else { return }
+            Self.log.info("[VoiceChat] followUpWindowExpired reason=noSpeech")
+            await self.chatCancelListening()
+        }
+    }
+
+    private func cancelFollowUpNoSpeechTimer(reason: String) {
+        guard followUpNoSpeechTask != nil else { return }
+        followUpNoSpeechTask?.cancel()
+        followUpNoSpeechTask = nil
+        Self.log.info("[VoiceChat] followUpWindowCancelled reason=\(reason, privacy: .public)")
     }
 
     private func autoRelistenSkipReason() -> String? {
@@ -494,6 +536,8 @@ final class VoiceCommandViewModel {
 
         voiceDraftErrorMessage = nil
         cancelMaxRecordingTimer()
+        cancelFollowUpNoSpeechTimer(reason: "listenStart")
+        currentListeningIsAutoFollowUp = startReason == "autoRelisten"
 
         let msgs = uiLanguage.speechMessages
         Self.log.info("[VoiceChat] recordingStarted startReason=\(startReason, privacy: .public) appUILanguage=\(self.uiLanguage.rawValue, privacy: .public)")
@@ -502,6 +546,10 @@ final class VoiceCommandViewModel {
         speechService.onPartialTranscript = { [weak self] text in
             guard let self, self.chatFlowState == .listening else { return }
             Self.log.info("[VoiceChat] localPartialReceived chars=\(text.count, privacy: .public) hiddenFromUI=true")
+        }
+        speechService.onSpeechDetected = { [weak self] in
+            guard let self else { return }
+            self.cancelFollowUpNoSpeechTimer(reason: "speechDetected")
         }
 
         // Request both microphone + speech recognition permissions.
@@ -531,6 +579,7 @@ final class VoiceCommandViewModel {
 
         chatFlowState = .listening
         startMaxRecordingTimer()
+        startFollowUpNoSpeechTimerIfNeeded(startReason: startReason)
         Self.log.info("[VoiceChat] listening active — tap-to-stop with auto-silence fallback; max timeout=30s")
     }
 
@@ -539,6 +588,7 @@ final class VoiceCommandViewModel {
     func chatFinalizeListening(stopReason: VoiceStopReason = .manual) async {
         guard chatFlowState == .listening else { return }
         cancelMaxRecordingTimer()
+        cancelFollowUpNoSpeechTimer(reason: "finalizeListening")
         chatFlowState = .processing
         chatDraftText = ""
 
@@ -570,7 +620,11 @@ final class VoiceCommandViewModel {
         if ns.domain == VocaTimeSpeechDomain.name,
            ns.code == VocaTimeSpeechErrorCode.recordingFailed.rawValue,
            ns.localizedDescription.contains("too small") {
-            userMsg = strings.chatEmptyTranscript
+            Self.log.info("[VoiceChat] captureFailure emptyOrTooShort — returning to idle without user-visible error")
+            voiceDraftErrorMessage = nil
+            chatFlowState = .idle
+            parsedCommand = nil
+            return
         } else {
             userMsg = localizedStopFailure(error, speechMsgs: speechMsgs)
         }
@@ -662,11 +716,15 @@ final class VoiceCommandViewModel {
             case MultilingualTranscriptionError.fileEmpty(let rid):
                 requestIdForLog = rid.uuidString
                 rootCause = "fileEmpty — audio file was empty or contained no speech frames"
-                userMessage = strings.chatErrorNothingRecorded
+                Self.log.info("[VoiceChat] cloudTranscriptionEmpty — returning to idle without user-visible error")
+                voiceDraftErrorMessage = nil
+                chatFlowState = .idle
+                parsedCommand = nil
+                return
             case MultilingualTranscriptionError.networkError(let u, let rid):
                 requestIdForLog = rid.uuidString
                 rootCause = "networkError — \(u.localizedDescription)"
-                userMessage = BackendUserFacingErrorMessages.transcriptionNetwork(strings: strings, underlying: u)
+                userMessage = noInternetConnectionMessage(strings: strings)
             case MultilingualTranscriptionError.httpError(let code, let body, let rid):
                 requestIdForLog = rid.uuidString
                 rootCause = "httpError — status=\(code) body=\(body.prefix(200))"
@@ -704,13 +762,16 @@ final class VoiceCommandViewModel {
         }
         let trimmed = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            // Transcript is user draft input — surface empty result in status only, not as assistant chat.
-            voiceDraftErrorMessage = uiLanguage.strings.chatEmptyTranscript
-            chatFlowState = .error
+            Self.log.info("[VoiceChat] emptyTranscript — returning to idle without user-visible error")
+            voiceDraftErrorMessage = nil
+            chatFlowState = .idle
             return
         }
         Self.log.info("[VoiceChat] transcriptDeliveredToInputField=\(trimmed, privacy: .public)")
         voiceDraftErrorMessage = nil
+        voiceDraftAwaitingSubmit = true
+        voiceFollowUpAutoStartsRemaining = currentListeningIsAutoFollowUp ? 0 : 1
+        currentListeningIsAutoFollowUp = false
         pendingVoiceTranscript = trimmed
         chatFlowState = .idle
     }
@@ -728,6 +789,11 @@ final class VoiceCommandViewModel {
         )
         Self.log.info("[VoiceChat] parse outcome actionType=\(String(describing: command.actionType), privacy: .public) parserSource=\(String(describing: command.parserSource), privacy: .public) title=\(command.title, privacy: .public)")
         parsedCommand = command
+
+        if shouldRejectParsedCommand(command) {
+            handleUnclearParsedCommand(command)
+            return
+        }
 
         // ── Route edit intents ────────────────────────────────────────────────
         switch command.actionType {
@@ -789,6 +855,63 @@ final class VoiceCommandViewModel {
         }
 
         commitSave(command: command)
+    }
+
+    private func shouldRejectParsedCommand(_ command: ParsedCommand) -> Bool {
+        if command.actionType == .unknown || command.parserSource == .unknown {
+            Self.log.info("[VoiceChat] parseRejected reason=unknown actionType=\(String(describing: command.actionType), privacy: .public) parserSource=\(String(describing: command.parserSource), privacy: .public)")
+            return true
+        }
+        if currentSubmitCameFromVoiceDraft, command.parserSource != .llm {
+            Self.log.info("[VoiceChat] parseRejected reason=voiceRequiresBackend parserSource=\(String(describing: command.parserSource), privacy: .public)")
+            return true
+        }
+        if command.parserSource == .llm, let confidence = command.confidence, confidence < 0.45 {
+            Self.log.info("[VoiceChat] parseRejected reason=lowConfidence confidence=\(confidence, privacy: .public)")
+            return true
+        }
+        return false
+    }
+
+    private func handleUnclearParsedCommand(_ command: ParsedCommand) {
+        let wasVoiceDraft = currentSubmitCameFromVoiceDraft
+        parsedCommand = nil
+        currentSubmitCameFromVoiceDraft = false
+        voiceFollowUpAutoStartsRemaining = 0
+        let now = Date()
+        guard now.timeIntervalSince(lastUnclearFeedbackAt) > 8 else {
+            Self.log.info("[VoiceChat] unclearFeedbackThrottled")
+            removePendingAssistantSlotIfEmpty()
+            chatFlowState = .idle
+            return
+        }
+        lastUnclearFeedbackAt = now
+        let message = wasVoiceDraft && command.parserSource != .llm
+            ? noInternetConnectionMessage(strings: uiLanguage.strings)
+            : unclearCommandMessage()
+        emitAssistantResponse(message, nextState: .error, stream: false)
+    }
+
+    private func unclearCommandMessage() -> String {
+        if uiLanguage == .en {
+            return "Didn’t understand that — try something like:\n“Remind me in 10 minutes to drink water”"
+        }
+        return uiLanguage.strings.chatTryRemind
+    }
+
+    private func noInternetConnectionMessage(strings: AppStrings) -> String {
+        uiLanguage == .en ? "No internet connection" : strings.chatErrorOffline
+    }
+
+    private func removePendingAssistantSlotIfEmpty() {
+        guard let slot = pendingAssistantSlotId,
+              let idx = chatMessages.firstIndex(where: { $0.id == slot && $0.role == .assistant && $0.text.isEmpty })
+        else {
+            pendingAssistantSlotId = nil
+            return
+        }
+        chatMessages.remove(at: idx)
+        pendingAssistantSlotId = nil
     }
 
     // MARK: - Edit intent handlers (unchanged)
@@ -1183,7 +1306,9 @@ final class VoiceCommandViewModel {
     func prepareForNewSession() async {
         isChatSheetPresented = false
         cancelAutoRelisten(reason: "sheetDismissed")
+        cancelFollowUpNoSpeechTimer(reason: "sheetDismissed")
         speechService.onPartialTranscript = nil
+        speechService.onSpeechDetected = nil
         await speechService.cancelForReset()
         cancelMaxRecordingTimer()
         cancelAllProcessingStatusHints()
@@ -1194,6 +1319,10 @@ final class VoiceCommandViewModel {
         chatFlowState = .idle
         chatDraftText = ""
         isTextEditing = false
+        voiceDraftAwaitingSubmit = false
+        currentSubmitCameFromVoiceDraft = false
+        currentListeningIsAutoFollowUp = false
+        voiceFollowUpAutoStartsRemaining = 0
         pendingVoiceTranscript = ""
         chatMessages = []
         parsedCommand = nil
